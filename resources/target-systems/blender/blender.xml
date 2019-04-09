@@ -1,0 +1,146 @@
+<vm name="blender">
+  <binaryOptions>
+    <configurationOption>
+      <name>root</name>
+      <outputString>
+      </outputString>
+      <prefix>abstract</prefix>
+      <postfix>
+      </postfix>
+      <parent>
+      </parent>
+      <impliedOptions />
+      <excludedOptions />
+      <optional>False</optional>
+    </configurationOption>
+    <configurationOption>
+      <name>background</name>
+      <outputString>Render Options:
+-b or --background 
+	Run in background (often used for UI-less rendering).
+</outputString>
+      <prefix>
+      </prefix>
+      <postfix>
+      </postfix>
+      <parent>root</parent>
+      <impliedOptions />
+      <excludedOptions />
+      <optional>False</optional>
+    </configurationOption>
+    <configurationOption>
+      <name>use_extension</name>
+      <outputString>-x or --use-extension &lt;bool&gt;
+	Set option to add the file extension to the end of the file.
+</outputString>
+      <prefix>
+      </prefix>
+      <postfix>
+      </postfix>
+      <parent>background</parent>
+      <impliedOptions />
+      <excludedOptions />
+      <optional>True</optional>
+    </configurationOption>
+    <configurationOption>
+      <name>disable_crash_handler</name>
+      <outputString>--disable-crash-handler 
+	Disable the crash handler.</outputString>
+      <prefix>
+      </prefix>
+      <postfix>
+      </postfix>
+      <parent>debug</parent>
+      <impliedOptions />
+      <excludedOptions />
+      <optional>True</optional>
+    </configurationOption>
+    <configurationOption>
+      <name>noglsl</name>
+      <outputString>-noglsl 
+	Disable GLSL shading.
+</outputString>
+      <prefix>
+      </prefix>
+      <postfix>
+      </postfix>
+      <parent>background</parent>
+      <impliedOptions />
+      <excludedOptions>
+        <options>enable_new_basic_shader_glsl</options>
+      </excludedOptions>
+      <optional>True</optional>
+    </configurationOption>
+    <configurationOption>
+      <name>enable_new_depsgraph</name>
+      <outputString>--enable-new-depsgraph 
+	Use new dependency graph.
+</outputString>
+      <prefix>
+      </prefix>
+      <postfix>
+      </postfix>
+      <parent>background</parent>
+      <impliedOptions />
+      <excludedOptions />
+      <optional>True</optional>
+    </configurationOption>
+    <configurationOption>
+      <name>enable_new_basic_shader_glsl</name>
+      <outputString>--enable-new-basic-shader-glsl 
+	Use new GLSL basic shader.
+</outputString>
+      <prefix>
+      </prefix>
+      <postfix>
+      </postfix>
+      <parent>background</parent>
+      <impliedOptions />
+      <excludedOptions>
+        <options>noglsl</options>
+      </excludedOptions>
+      <optional>True</optional>
+    </configurationOption>
+  </binaryOptions>
+  <numericOptions>
+    <configurationOption>
+      <name>threads</name>
+      <outputString>-t or --threads &lt;threads&gt;
+	Use amount of &lt;threads&gt; for rendering and other operations
+	[1-1024], 0 for systems processor count.</outputString>
+      <prefix>
+      </prefix>
+      <postfix>
+      </postfix>
+      <parent>background</parent>
+      <impliedOptions />
+      <excludedOptions />
+      <minValue>1</minValue>
+      <maxValue>1024</maxValue>
+      <stepFunction>threads + 1</stepFunction>
+    </configurationOption>
+    <configurationOption>
+      <name>render_format</name>
+      <outputString>Format Options:
+-F or --render-format &lt;format&gt;
+	Set the render format.
+	Valid options are 'TGA' 'RAWTGA' 'JPEG' 'IRIS' 'IRIZ' 'AVIRAW' 'AVIJPEG' 'PNG' 'BMP'
+
+	Formats that can be compiled into Blender, not available on all systems: 'HDR' 'TIFF' 'EXR' 'MULTILAYER'
+	'MPEG' 'FRAMESERVER' 'QUICKTIME' 'CINEON' 'DPX' 'DDS' 'JP2'</outputString>
+      <prefix>
+      </prefix>
+      <postfix>
+      </postfix>
+      <parent>background</parent>
+      <impliedOptions />
+      <excludedOptions />
+      <minValue>1</minValue>
+      <maxValue>9</maxValue>
+      <stepFunction>render_format + 1</stepFunction>
+    </configurationOption>
+  </numericOptions>
+  <booleanConstraints />
+  <nonBooleanConstraints />
+  <mixedConstraints />
+</vm>

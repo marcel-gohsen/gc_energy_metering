@@ -1,0 +1,36 @@
+{
+  "name": "blender-bench",
+  "command": "blender",
+  "arguments": {"render-output": "--render-output //heli", "render-frame":  "--render-frame 1", "engine":  "--engine CYCLES"},
+  "resources": {"scene-file": "scene-Helicopter-27.blend"},
+  "pattern": [
+    "blender",
+    "background",
+    "scene-file",
+    "render-output",
+    "engine",
+    "render-format",
+    "noglsl",
+    "enable-new-depsgraph",
+    "enable-new-basic-shader-glsl",
+    "disable-crash-handler",
+    "use-extension",
+    "threads",
+    "render-frame"],
+  "mappings": {
+    "engine": {"1": "BLENDER_RENDER", "2":  "BLENDER_GAME", "3":  "CYCLES"},
+    "render-format": {
+      "1": "TGA",
+      "2": "RAWTGA",
+      "3": "JPEG",
+      "4": "IRIS",
+      "5": "IRIZ",
+      "6": "AVIRAW",
+      "7": "AVIJPEG",
+      "8": "PNG",
+      "9": "BMP"
+    }
+  },
+  "single-hyphen": ["noglsl"],
+  "explicit-binary": ["use-extension"]
+}

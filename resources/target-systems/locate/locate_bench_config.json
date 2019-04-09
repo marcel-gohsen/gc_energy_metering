@@ -1,0 +1,10 @@
+{
+  "name": "locate-bench",
+  "command": "locate",
+  "arguments": ["lib"],
+  "resources": null,
+  "pattern": null,
+  "mappings": null,
+  "single-hyphen": null,
+  "explicit-binary": null
+}
