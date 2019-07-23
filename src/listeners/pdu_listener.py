@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 import uuid
 import os
 import json
+import datetime
 
 
 class PDUListener(Listener):
@@ -13,7 +14,7 @@ class PDUListener(Listener):
     def __init__(self, outlets=[0, 17], sample_rate=4, experiment="debug"):
         super().__init__()
 
-        self.pdu_address = "http://141.54.132.133/cgi/get_param.cgi"
+        self.pdu_address = "http://pdu001.medien.uni-weimar.de/cgi/get_param.cgi"
 
         local_parameter = [
             "outlet.name.dev1",
@@ -23,6 +24,7 @@ class PDUListener(Listener):
             "outlet.power.dev1",
             "outlet.pf.dev1",
             "outlet.energy.dev1",
+            "noexport.state.dev1"
         ]
 
         global_parameter = ["sys.time"]
@@ -74,7 +76,7 @@ class PDUListener(Listener):
             elif element.tag == "outlet.energy.dev1":
                 data[current_outlet]["energy"] = float(element.text)
             elif element.tag == "sys.time":
-                data["time"] = element.text
+                data["time"] = datetime.datetime.now()
             elif element.tag == "sys.passwd":
                 pass
 
