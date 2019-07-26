@@ -4,10 +4,11 @@ from mysql.connector import errorcode
 from collections.abc import Iterable
 
 from error_handling.error_handler import ErrorHandler
+from settings import settings
 
 
 class Database:
-    def __init__(self, user, password, database="green_configurator", host="intelli001.medien.uni-weimar.de",
+    def __init__(self, user, password, database=settings.DB_NAME, host=settings.DB_HOST,
                  port=3306):
         self.connection = None
         self.cursor = None
@@ -42,12 +43,12 @@ class Database:
 
     def contains_value(self, table, field, value, is_json_type=False):
         if is_json_type:
-            statement = "SELECT EXISTS(SELECT * FROM {tbl} WHERE JSON_CONTAINS({fld}, %(value)s)) as existence;".format(
+            statement = "SELECT EXISTS(SELECT id FROM {tbl} WHERE JSON_CONTAINS({fld}, %(value)s)) as existence;".format(
                 tbl=table,
                 fld=field)
         else:
-            statement = "SELECT EXISTS(SELECT * FROM {tbl} WHERE {fld} = %(value)s) as existence;".format(tbl=table,
-                                                                                                          fld=field)
+            statement = "SELECT EXISTS(SELECT id FROM {tbl} WHERE {fld} = %(value)s) as existence;".format(tbl=table,
+                                                                                                           fld=field)
         self.__execute_query__(statement, parameter={"value": value})
         res = self.cursor.fetchone()[0]
 
@@ -75,7 +76,7 @@ class Database:
 
             clause = clause.format(*ins)
 
-            statement = ("SELECT id FROM {tbl} WHERE "+clause + ";").format(tbl=table)
+            statement = ("SELECT id FROM {tbl} WHERE " + clause + ";").format(tbl=table)
             parameter = None
 
         else:
@@ -86,6 +87,17 @@ class Database:
         res = [x[0] for x in self.cursor.fetchall()]
 
         return res
+
+    def request_id(self, table, ref_field, ref_value, values):
+        res = self.get_indices_of(table, ref_field, ref_value)
+        try:
+            id = res[0]
+        except IndexError:
+            id = self.get_free_index(table)
+            values.insert(0, id)
+            self.insert_data(table, values)
+
+        return id
 
     def insert_data(self, table, data, fields=None):
         if len(data) == 0:

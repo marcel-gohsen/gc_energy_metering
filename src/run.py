@@ -3,6 +3,7 @@ import atexit
 import copy
 import json
 import os.path as path
+import time
 
 from settings import settings
 from sampling.sampler import sample_configs
@@ -23,8 +24,8 @@ class Launcher:
         print("[LAUNCH] Initialize")
         self.id_cache = {}
 
-        # self.db = Database(args.u, args.p)
-        # self.data_collector = DataCollector(self.db, dry_run=settings.DATA_DRY_RUN)
+        self.db = Database(args.u, args.p)
+        self.data_collector = DataCollector(self.db, dry_run=settings.DATA_DRY_RUN)
         # self.data_collector.add_listener(ArduinoPowerListener())
 
         feature_model = FeatureModel(path_handler.model_path)
@@ -43,16 +44,16 @@ class Launcher:
     def launch(self):
         self.sync_with_db(self.benchmark.command_name)
 
-        if self.data_collector.listeners is not None:
-            for listener in self.data_collector.listeners:
-                listener.start()
-
-        print("[LAUNCH] Execute benchmark")
-        self.environment.execute(self.runs, buffer_size=setup.DATA_BUFFER_SIZE)
-
-        if self.data_collector.listeners is not None:
-            for listener in self.data_collector.listeners:
-                listener.stop()
+        # if self.data_collector.listeners is not None:
+        #     for listener in self.data_collector.listeners:
+        #         listener.start()
+        #
+        # print("[LAUNCH] Execute benchmark")
+        # self.environment.execute(self.runs, buffer_size=setup.DATA_BUFFER_SIZE)
+        #
+        # if self.data_collector.listeners is not None:
+        #     for listener in self.data_collector.listeners:
+        #         listener.stop()
 
     def evaluate(self, fixed_data=None):
         if fixed_data is None:
@@ -78,68 +79,36 @@ class Launcher:
         hw_conf_id = 1  # TODO: Read from file or something
         self.id_cache["hw_conf"] = hw_conf_id
 
-        if self.db.contains_value("system_sw", "name", ts):
-            ts_id = self.db.get_indices_of("system_sw", "name", ts)[0]
-        else:
-            ts_id = self.db.get_free_index("system_sw")
-            self.db.insert_data("system_sw", [ts_id, ts])
-
-        self.id_cache["sw_system"] = ts_id
+        self.id_cache["sw_system"] = self.db.request_id("system_sw", "name", ts, [ts])
 
         bench_cmd = self.benchmark.command_name + " [OPTIONS] " + " ".join(self.benchmark.arguments)
-
-        if self.db.contains_value("benchmark", "command", bench_cmd):
-            bench_id = self.db.get_indices_of("benchmark", "command", bench_cmd)[0]
-        else:
-            # bench_id = self.db.get_free_index("benchmark")
-            bench_id = self.db.insert_data("benchmark",
-                                           [self.benchmark.name, bench_cmd], fields=["name", "command"])
-
-        self.id_cache["benchmark"] = bench_id
-        self.benchmark.id = bench_id
+        self.id_cache["benchmark"] = self.db.request_id("benchmark", "command", bench_cmd,
+                                                        [self.benchmark.name, bench_cmd])
+        self.benchmark.id = self.id_cache["benchmark"]
 
         for config in self.sampled_configs:
-            feature_vector = tuple([config.feature_values[x] for x in sorted(config.features)])
+            feature_hash = config.compute_hash()
+            bin_features = config.get_binary_features()
+            num_features = config.get_numeric_features()
 
-            feature_hash = hash(feature_vector)
+            config.id = self.db.request_id("conf_sw", "feature_hash", feature_hash,
+                                           [feature_hash, json.dumps(bin_features), json.dumps(num_features)])
 
-            bin_features = {x: config.feature_values[x] for x in config.features if
-                            config.features[x] == "abstract" or config.features[x] == "binary"}
-
-            num_features = {x: config.feature_values[x] for x in config.features if
-                            config.features[x] == "numeric"}
-
-            if self.db.contains_value("conf_sw", "feature_hash", feature_hash):
-                sw_conf_id = self.db.get_indices_of("conf_sw", "feature_hash", feature_hash)[0]
-            else:
-                sw_conf_id = self.db.get_free_index("conf_sw")
-                self.db.insert_data("conf_sw",
-                                    [sw_conf_id, feature_hash, json.dumps(bin_features), json.dumps(num_features)])
-
-            config.id = sw_conf_id
-
-            run_id = self.db.get_indices_of("run_spec", ["hw_conf", "sw_system", "sw_version", "sw_conf", "benchmark"],
-                                            [hw_conf_id, ts_id, 0, sw_conf_id, bench_id])
-
-            if len(run_id) == 0:
-                run_id = self.db.get_free_index("run_spec")
-                self.db.insert_data("run_spec", [run_id, hw_conf_id, ts_id, 0, sw_conf_id, bench_id])
-            else:
-                run_id = run_id[0]
+            run_id = self.db.request_id("run_spec",
+                                        ["hw_conf", "sw_system", "sw_version", "sw_conf", "benchmark"],
+                                        [self.id_cache["hw_conf"], self.id_cache["sw_system"], 0, config.id, self.benchmark.id],
+                                        [self.id_cache["hw_conf"], self.id_cache["sw_system"], 0, config.id, self.benchmark.id])
 
             self.runs.append(
                 RunSpecification(run_id, self.benchmark, config, hw_conf_id,
-                                 repetitions=setup.RUN_REPETITIONS,
-                                 nodes=setup.RUN_NODES))
-
-            # if len(self.runs) == 2:
-            #     break
+                                 repetitions=settings.RUN_REPETITIONS,
+                                 nodes=settings.RUN_NODES))
 
         sched_id_start = self.db.get_free_index("run_schedule")
         num_sched_ids = 0
 
         for run in self.runs:
-            num_sched_ids += run.repetitions * run.nodes
+            num_sched_ids += run.repetitions * run.num_nodes
 
         self.id_cache["run_sched"] = [x for x in range(sched_id_start, sched_id_start + num_sched_ids)]
         self.data_collector.sched_id_pool = copy.deepcopy(self.id_cache["run_sched"])
@@ -157,15 +126,15 @@ def main():
     # fixed_data = [x for x in range(261867, 262046 + 1)]
     # fixed_data = [x for x in range(263279, 265704 + 1)]
 
-    # fixed_data = None
-    #
-    # if fixed_data is None:
-    #     launcher.launch()
+    fixed_data = None
+
+    if fixed_data is None:
+        launcher.launch()
     #
     # launcher.train_models(fixed_data)
     # launcher.evaluate(fixed_data)
 
-    # atexit.register(launcher.shutdown)
+    atexit.register(launcher.shutdown)
 
 
 if __name__ == '__main__':

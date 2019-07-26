@@ -1,5 +1,6 @@
-import sys, os
-
+import os
+import sys
+import traceback
 
 class ErrorHandler:
     @staticmethod
@@ -12,6 +13,8 @@ class ErrorHandler:
         if exception is not None:
             if len(str(exception)) > 0:
                 print("[" + prefix + "]: " + str(exception), file=file)
+
+            traceback.print_exc()
 
         if terminate:
             exit(1)
