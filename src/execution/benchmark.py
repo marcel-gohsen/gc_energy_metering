@@ -5,6 +5,9 @@ from error_handling.error_handler import ErrorHandler
 
 class Benchmark:
     def __init__(self, bench_config_path):
+        self.__parse_config(bench_config_path)
+
+    def __parse_config(self, bench_config_path):
         with open(bench_config_path) as conf_file:
             bench_conf = json.load(conf_file)
 

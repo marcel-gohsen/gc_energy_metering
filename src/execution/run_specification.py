@@ -7,7 +7,7 @@ class RunSpecification:
         self.hw_conf_id = hw_conf_id
 
         self.repetitions = repetitions
-        self.nodes = nodes
+        self.num_nodes = nodes
 
     def get_exc_cmd(self):
         return self.benchmark.create_exc_cmd(self.sw_config)

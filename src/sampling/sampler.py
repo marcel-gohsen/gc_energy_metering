@@ -1,6 +1,7 @@
 import itertools
 
 from config.config import Config
+from settings import settings
 
 
 class Sampler:
@@ -34,3 +35,11 @@ class Sampler:
         print("[SMPL] Sampled " + str(len(configs)) + " configs")
 
         return configs
+
+
+def sample_configs(feature_model):
+    bin_sampling = settings.BINARY_SAMPLER.set_feature_model(feature_model)
+    num_sampling = settings.NUMERIC_SAMPLER.set_feature_model(feature_model)
+
+    sampler = Sampler(feature_model, bin_sampling, num_sampling)
+    return sampler.sample()

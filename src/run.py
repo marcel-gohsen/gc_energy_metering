@@ -1,11 +1,12 @@
 import argparse
 import atexit
+import copy
 import json
 import os.path as path
-import copy
-import getpass
 
-import setup.setup as setup
+from settings import settings
+from sampling.sampler import sample_configs
+from utility import path_handler
 from data_collector.data_collector import DataCollector
 from database.database import Database
 from environments.slurm_environment import SlurmEnvironment
@@ -13,51 +14,34 @@ from evaluation.plotter import Plotter
 from execution.benchmark import Benchmark
 from execution.run_specification import RunSpecification
 from feature_model.feature_model import FeatureModel
-from sampling.sampler import Sampler
-from train.model_trainer import ModelTrainer
 from listeners.arduino_power_listener import ArduinoPowerListener
-
-
-def sample_configs(feature_model):
-    bin_sampling = setup.BINARY_SAMPLER.set_feature_model(feature_model)
-    num_sampling = setup.NUMERIC_SAMPLER.set_feature_model(feature_model)
-
-    sampler = Sampler(feature_model, bin_sampling, num_sampling)
-    return sampler.sample()
+from train.model_trainer import ModelTrainer
 
 
 class Launcher:
-    def __init__(self, ts, environment=SlurmEnvironment):
+    def __init__(self, bench_descriptor, environment=SlurmEnvironment):
         print("[LAUNCH] Initialize")
         self.id_cache = {}
-        self.resources_root = "../resources/"
-        self.target_systems_root = path.join(self.resources_root, "target-systems")
 
-        ts_path = path.join(self.target_systems_root, ts)
-        ts_model_path = path.join(ts_path, ts + ".xml")
-        ts_bench_path = path.join(ts_path, ts + "_bench_config.json")
+        # self.db = Database(args.u, args.p)
+        # self.data_collector = DataCollector(self.db, dry_run=settings.DATA_DRY_RUN)
+        # self.data_collector.add_listener(ArduinoPowerListener())
 
-        self.db = Database(args.u, args.p)
-        self.data_collector = DataCollector(self.db, dry_run=setup.DATA_DRY_RUN)
-        self.data_collector.add_listener(ArduinoPowerListener())
-
-        feature_model = FeatureModel(ts_model_path)
+        feature_model = FeatureModel(path_handler.model_path)
         self.sampled_configs = sample_configs(feature_model)
 
-        self.ts_benchmark = Benchmark(ts_bench_path)
-
-        for config in self.sampled_configs:
-            self.ts_benchmark.create_exc_cmd(config)
+        self.benchmark = Benchmark(path_handler.bench_config_path)
 
         self.runs = []
 
-        self.environment = environment(self.data_collector)
-        self.evaluator = Plotter(self.db)
-
-        self.model_trainer = ModelTrainer(self.db)
+        # self.environment = environment(self.data_collector)
+        self.environment = environment()
+        # self.evaluator = Plotter(self.db)
+        #
+        # self.model_trainer = ModelTrainer(self.db)
 
     def launch(self):
-        self.sync_with_db(self.ts_benchmark.command_name)
+        self.sync_with_db(self.benchmark.command_name)
 
         if self.data_collector.listeners is not None:
             for listener in self.data_collector.listeners:
@@ -76,9 +60,9 @@ class Launcher:
         else:
             ids = fixed_data
 
-        self.evaluator.plot_energy_performance_tradeoff(ids, self.ts_benchmark.name, self.model_trainer.plotted_figures)
+        self.evaluator.plot_energy_performance_tradeoff(ids, self.benchmark.name, self.model_trainer.plotted_figures)
         self.model_trainer.plotted_figures += 1
-        self.evaluator.plot_performance_by_host(ids, self.ts_benchmark.name, self.model_trainer.plotted_figures)
+        self.evaluator.plot_performance_by_host(ids, self.benchmark.name, self.model_trainer.plotted_figures)
         self.model_trainer.plotted_figures += 1
 
     def train_models(self, fixed_data=None):
@@ -87,7 +71,7 @@ class Launcher:
         else:
             ids = fixed_data
 
-        self.model_trainer.train(ids, self.ts_benchmark.name)
+        self.model_trainer.train(ids, self.benchmark.name)
 
     def sync_with_db(self, ts):
         print("[LAUNCH] Sync with DB")
@@ -102,17 +86,17 @@ class Launcher:
 
         self.id_cache["sw_system"] = ts_id
 
-        bench_cmd = self.ts_benchmark.command_name + " [OPTIONS] " + " ".join(self.ts_benchmark.arguments)
+        bench_cmd = self.benchmark.command_name + " [OPTIONS] " + " ".join(self.benchmark.arguments)
 
         if self.db.contains_value("benchmark", "command", bench_cmd):
             bench_id = self.db.get_indices_of("benchmark", "command", bench_cmd)[0]
         else:
             # bench_id = self.db.get_free_index("benchmark")
             bench_id = self.db.insert_data("benchmark",
-                                           [self.ts_benchmark.name, bench_cmd], fields=["name", "command"])
+                                           [self.benchmark.name, bench_cmd], fields=["name", "command"])
 
         self.id_cache["benchmark"] = bench_id
-        self.ts_benchmark.id = bench_id
+        self.benchmark.id = bench_id
 
         for config in self.sampled_configs:
             feature_vector = tuple([config.feature_values[x] for x in sorted(config.features)])
@@ -144,7 +128,7 @@ class Launcher:
                 run_id = run_id[0]
 
             self.runs.append(
-                RunSpecification(run_id, self.ts_benchmark, config, hw_conf_id,
+                RunSpecification(run_id, self.benchmark, config, hw_conf_id,
                                  repetitions=setup.RUN_REPETITIONS,
                                  nodes=setup.RUN_NODES))
 
@@ -166,22 +150,22 @@ class Launcher:
 
 
 def main():
-    launcher = Launcher(setup.BENCHMARK, SlurmEnvironment)
+    launcher = Launcher(settings.BENCHMARK, SlurmEnvironment)
     # fixed_data = [x for x in range(245565, 245654 + 1)]
     # fixed_data = [x for x in range(246567, 247556 + 1)]
     # fixed_data = [x for x in range(250527, 261326 + 1)]
     # fixed_data = [x for x in range(261867, 262046 + 1)]
     # fixed_data = [x for x in range(263279, 265704 + 1)]
 
-    fixed_data = None
+    # fixed_data = None
+    #
+    # if fixed_data is None:
+    #     launcher.launch()
+    #
+    # launcher.train_models(fixed_data)
+    # launcher.evaluate(fixed_data)
 
-    if fixed_data is None:
-        launcher.launch()
-
-    launcher.train_models(fixed_data)
-    launcher.evaluate(fixed_data)
-
-    atexit.register(launcher.shutdown)
+    # atexit.register(launcher.shutdown)
 
 
 if __name__ == '__main__':

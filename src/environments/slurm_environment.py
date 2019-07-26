@@ -4,22 +4,15 @@ import os.path as path
 import subprocess
 import time
 
+from utility import path_handler
 from error_handling.error_handler import ErrorHandler
 from environments.environment import Environment
 
 
 class SlurmEnvironment(Environment):
-    def __init__(self, data_collector):
-        self.slurm_execution_root = "../data/slurm"
-
-        if not path.exists(self.slurm_execution_root) or not path.isdir(self.slurm_execution_root):
-            os.makedirs(self.slurm_execution_root)
-
-        self.bench_path = None
-
-        self.tftp_root = "/srv/tftpboot/benchmarks/"
-        self.tftp_bench_root = None
-        self.tftp_bench_perf_root = None
+    def __init__(self, data_collector=None):
+        if not path.exists(path_handler.slurm_script_root) or not path.isdir(path_handler.slurm_script_root):
+            os.makedirs(path_handler.slurm_script_root)
 
         self.current_run = None
         self.data_collector = data_collector
@@ -50,8 +43,8 @@ class SlurmEnvironment(Environment):
                                 exc, terminate=False)
 
     def execute(self, runs, buffer_size=100):
-        self.tftp_bench_root = path.join(self.tftp_root, runs[0].benchmark.name)
-        self.tftp_bench_perf_root = path.join(self.tftp_bench_root, "performance")
+        # self.tftp_bench_root = path.join(self.tftp_root, runs[0].benchmark.name)
+        # self.tftp_bench_perf_root = path.join(self.tftp_bench_root, "performance")
 
         self.current_run = runs[0]
 
@@ -69,18 +62,19 @@ class SlurmEnvironment(Environment):
 
             self.create_workload_script(run.get_exc_cmd())
 
-            self.__exec_cmd__(["/bin/bash", path.join(self.bench_path, run.benchmark.name + "-run.sh")])
-            print("[Slurm] Submitted job run "+str(run.id))
-            self.wait_for_completion(run.benchmark.name)
+            # self.__exec_cmd__(["/bin/bash",
+            #                    path.join(path_handler.slurm_script_bench_root, run.benchmark.name + "-run.sh")])
+            # print("[Slurm] Submitted job run " + str(run.id))
+            # self.wait_for_completion(run.benchmark.name)
 
             data_entries_per_node += run.repetitions
 
             if data_entries_per_node >= buffer_size:
-                self.fetch_and_clean()
+                # self.fetch_and_clean()
                 data_entries_per_node = 0
 
-        if data_entries_per_node > 0:
-            self.fetch_and_clean()
+        # if data_entries_per_node > 0:
+        #     self.fetch_and_clean()
 
     def job_is_running(self, job_name):
         out = self.__exec_cmd__(["squeue", "-h", "--name=" + job_name])
@@ -92,20 +86,22 @@ class SlurmEnvironment(Environment):
 
     def init_job_execution(self):
         print("[Slurm] Init job execution")
-        self.bench_path = path.join(self.slurm_execution_root, self.current_run.benchmark.name)
-        os.makedirs(self.bench_path, exist_ok=True)
+        os.makedirs(path_handler.slurm_script_bench_root, exist_ok=True)
 
-        os.makedirs(self.tftp_bench_perf_root, exist_ok=True)
-        os.system("rm -f " + path.join(self.tftp_bench_perf_root, "*"))
+        os.makedirs(path_handler.slurm_nfs_bench_root, exist_ok=True)
+        # os.system("rm -f " + path.join(self.tftp_bench_perf_root, "*"))
 
     def fetch_and_clean(self):
         self.wait_for_completion(self.current_run.benchmark.name)
 
-        self.__exec_cmd__(["sbatch", path.join(self.bench_path, self.current_run.benchmark.name + "-cleanup-job.sh")])
+        self.__exec_cmd__(["sbatch",
+                           path.join(path_handler.slurm_script_bench_root,
+                                     self.current_run.benchmark.name + "-cleanup-job.sh")])
         print("[Slurm] Submitted cleanup job")
 
         self.wait_for_completion("cleanup")
-        self.data_collector.collect(self.tftp_bench_perf_root)
+        if self.data_collector is not None:
+            self.data_collector.collect(self.tftp_bench_perf_root)
 
     def wait_for_completion(self, job_name):
         print("[Slurm] Wait for job completion")
@@ -114,9 +110,9 @@ class SlurmEnvironment(Environment):
 
     def create_job_submission_script(self):
         job_name = self.current_run.benchmark.name
-        with open(path.join(self.bench_path, job_name + "-run.sh"), "w") as out_file:
+        with open(path.join(path_handler.slurm_script_bench_root, job_name + "-run.sh"), "w") as out_file:
             out_file.write("#!/bin/bash\n\n")
-            out_file.write("pushd " + self.bench_path + "\n")
+            out_file.write("pushd " + path_handler.slurm_script_bench_root + "\n")
 
             if self.current_run.benchmark.resources is not None:
                 for key, value in self.current_run.benchmark.resources.items():
@@ -132,7 +128,7 @@ class SlurmEnvironment(Environment):
         job_name = self.current_run.benchmark.name
         array = "1-" + str(num_repetitions)
 
-        with open(path.join(self.bench_path, job_name + "-slurm-job.sh"), "w") as out_file:
+        with open(path.join(path_handler.slurm_script_bench_root, job_name + "-slurm-job.sh"), "w") as out_file:
             out_file.write("#!/bin/bash\n\n")
             out_file.write("# <SLURM PARAMETER>\n")
             out_file.write("#SBATCH --job-name=" + job_name + "\n")
@@ -153,16 +149,18 @@ class SlurmEnvironment(Environment):
                     )
 
             out_file.write(
-                "srun tftp samoa.medien.uni-weimar.de -c get " + path.join(self.tftp_bench_root, job_name + "-workload.sh") + "\n")
+                "srun tftp samoa.medien.uni-weimar.de -c get " + path.join(self.tftp_bench_root,
+                                                                           job_name + "-workload.sh") + "\n")
             out_file.write(
-                "srun tftp samoa.medien.uni-weimar.de -c get " + path.join(self.tftp_bench_root, job_name + "-cleanup.sh") + "\n\n")
+                "srun tftp samoa.medien.uni-weimar.de -c get " + path.join(self.tftp_bench_root,
+                                                                           job_name + "-cleanup.sh") + "\n\n")
 
             out_file.write("# <JOB EXECUTION>\n")
             out_file.write("srun /bin/bash " + job_name + "-workload.sh\n\n")
 
     def create_cleanup_job_script(self, num_nodes):
         job_name = self.current_run.benchmark.name
-        with open(path.join(self.bench_path, job_name + "-cleanup-job.sh"), "w") as out_file:
+        with open(path.join(path_handler.slurm_script_bench_root, job_name + "-cleanup-job.sh"), "w") as out_file:
             out_file.write("#!/bin/bash\n\n")
             out_file.write("# <SLURM PARAMETER>\n")
             out_file.write("#SBATCH --job-name=cleanup\n")
@@ -176,17 +174,18 @@ class SlurmEnvironment(Environment):
 
     def create_cleanup_script(self):
         job_name = self.current_run.benchmark.name
-        with open(path.join(self.bench_path, job_name + "-cleanup.sh"), "w") as out_file:
+        with open(path.join(path_handler.slurm_script_bench_root, job_name + "-cleanup.sh"), "w") as out_file:
             out_file.write("#!/bin/bash\n\n")
             out_file.write(
-                "tftp samoa.medien.uni-weimar.de -c put $(realpath *.ldjson) " + path.join(self.tftp_bench_perf_root, "$(ls *.ldjson)") + "\n")
+                "tftp samoa.medien.uni-weimar.de -c put $(realpath *.ldjson) " + path.join(self.tftp_bench_perf_root,
+                                                                                           "$(ls *.ldjson)") + "\n")
             out_file.write("rm *.ldjson")
 
     def create_workload_script(self, job_command):
         job_name = self.current_run.benchmark.name
         timestamp = "date +%d/%m/%Y\" \"%H:%M:%S\" \"%N"
 
-        with open(path.join(self.bench_path, job_name + "-workload.sh"), "w") as script_file:
+        with open(path.join(path_handler.slurm_script_bench_root, job_name + "-workload.sh"), "w") as script_file:
             script_file.write("#!/bin/bash\n\n")
             script_file.write("host=$(hostname)\n")
             script_file.write("outfile=\"${SLURM_JOB_NAME}-${host}-measures.ldjson\"\n\n")
@@ -196,10 +195,11 @@ class SlurmEnvironment(Environment):
 
             script_file.write("echo \"{\\\"slurm_job_id\\\":\\\"${SLURM_ARRAY_JOB_ID}\\\", "
                               "\\\"run_spec_id\\\":\\\"" + str(self.current_run.id) + "\\\", "
-                              "\\\"sw_config_id\\\":\\\"" + str(self.current_run.sw_config.id) + "\\\", "                                                                                             
-                              "\\\"repetition\\\":\\\"${SLURM_ARRAY_TASK_ID}\\\", "
-                              "\\\"host\\\":\\\"${host}\\\", "
-                              "\\\"command\\\":\\\"" + job_command + "\\\", "
-                              "\\\"begin\\\":\\\"${begin}\\\", "
-                              "\\\"end\\\":\\\"${end}\\\"}\" "
-                              "| tee -a \"${outfile}\"\n\n")
+                                                                                      "\\\"sw_config_id\\\":\\\"" + str(
+                self.current_run.sw_config.id) + "\\\", "
+                                                 "\\\"repetition\\\":\\\"${SLURM_ARRAY_TASK_ID}\\\", "
+                                                 "\\\"host\\\":\\\"${host}\\\", "
+                                                 "\\\"command\\\":\\\"" + job_command + "\\\", "
+                                                                                        "\\\"begin\\\":\\\"${begin}\\\", "
+                                                                                        "\\\"end\\\":\\\"${end}\\\"}\" "
+                                                                                        "| tee -a \"${outfile}\"\n\n")

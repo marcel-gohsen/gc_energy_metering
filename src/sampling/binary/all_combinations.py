@@ -1,6 +1,5 @@
 import itertools
 
-from config.config import Config
 from sampling.sampling_strategy import SamplingStrategy
 
 

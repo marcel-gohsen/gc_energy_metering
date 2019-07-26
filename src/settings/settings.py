@@ -19,5 +19,6 @@ DATA_BUFFER_SIZE = 100
 RUN_REPETITIONS = 1
 RUN_NODES = 9
 
-BENCHMARK = "locate"
+# Paths are given relative to target-systems folder in resources
+BENCHMARK = {"name": "locate", "model-path": "locate/locate.xml", "config-path": "locate/locate_bench_config.json"}
 # BENCHMARK = "blender"
