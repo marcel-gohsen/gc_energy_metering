@@ -26,6 +26,10 @@ class Listener(metaclass=abc.ABCMeta):
     def stop(self):
         self.is_listening = False
 
+    @abc.abstractmethod
+    def get_data(self):
+        pass
+
 
 class ListeningThread(threading.Thread):
     def __init__(self, listener):

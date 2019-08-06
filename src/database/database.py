@@ -1,10 +1,13 @@
 import mysql.connector as mysql
 import mysql.connector.errors as mysql_err
+from datetime import datetime
 from mysql.connector import errorcode
 from collections.abc import Iterable
 
 from error_handling.error_handler import ErrorHandler
 from settings import settings
+
+import ciso8601
 
 
 class Database:
@@ -27,6 +30,8 @@ class Database:
 
         except mysql_err.Error as err:
             ErrorHandler.handle("DB", "Can't connect to " + host + ":" + str(port), err, terminate=True)
+
+        self.run_sched_cache = None
 
     def __execute_query__(self, statement, parameter=None):
         try:
@@ -67,7 +72,7 @@ class Database:
 
     def get_indices_of(self, table, fields, values, conjunction="AND"):
         if isinstance(fields, list):
-            clause = (" " + conjunction + " ").join(["{} = {}"] * len(fields))
+            clause = (" " + conjunction + " ").join(["{} = \"{}\""] * len(fields))
             pairs = list(zip(fields, values))
             ins = []
             for pair in pairs:
@@ -87,6 +92,28 @@ class Database:
         res = [x[0] for x in self.cursor.fetchall()]
 
         return res
+
+    def get_run_idx(self, timestamp, host):
+        if self.run_sched_cache is not None:
+            if host == self.run_sched_cache[0]:
+                p_time = ciso8601.parse_datetime(timestamp)
+
+                if self.run_sched_cache[1] <= p_time <= self.run_sched_cache[2]:
+                    return self.run_sched_cache[3]
+
+        statement = "SELECT id, begin_time, end_time FROM run_schedule " \
+                    + "WHERE begin_time <= \"" + str(timestamp) + "\" AND end_time >= \"" + str(timestamp) + "\" " \
+                    + " AND client_id = \"" + host + "\";"
+        self.__execute_query__(statement)
+
+        res = self.cursor.fetchall()
+
+        if len(res) > 0:
+            self.run_sched_cache = (host, res[0][1], res[0][2], res[0][0])
+
+            return res[0][0]
+        else:
+            self.run_sched_cache = None
 
     def request_id(self, table, ref_field, ref_value, values):
         res = self.get_indices_of(table, ref_field, ref_value)
@@ -132,6 +159,29 @@ class Database:
 
         self.__execute_query__("SELECT LAST_INSERT_ID();")
         return self.cursor.fetchone()[0]
+
+    def update_data(self, table, fields, values, where_fields, where_values, conjunction="AND"):
+        set = ", ".join(["{} = \"{}\""] * len(fields))
+
+        set_list = []
+        for a, b in zip(fields, values):
+            set_list.append(a)
+            set_list.append(b)
+
+        set = set.format(*set_list)
+
+        where = (" " + conjunction + " ").join(["{} = \"{}\""] * len(where_fields))
+
+        where_list = []
+        for a, b in zip(where_fields, where_values):
+            where_list.append(a)
+            where_list.append(b)
+
+        where = where.format(*where_list)
+
+        statement = ("UPDATE {tbl} SET " + set + " WHERE " + where + ";").format(tbl=table)
+        self.__execute_query__(statement, parameter=None)
+        self.connection.commit()
 
     def get_data(self, table, fields=None, condition=None):
         fields_sql = "*"

@@ -16,3 +16,4 @@ slurm_script_bench_root = path.join(slurm_script_root, settings.BENCHMARK["name"
 
 slurm_nfs_root = path.join("/media/raid/", getpass.getuser())
 slurm_nfs_bench_root = path.join(slurm_nfs_root, settings.BENCHMARK["name"])
+slurm_nfs_bench_perf_root = path.join(slurm_nfs_bench_root, "performance")

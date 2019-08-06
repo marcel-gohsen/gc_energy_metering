@@ -5,6 +5,7 @@ import time
 import datetime
 from itertools import islice
 
+
 class ArduinoPowerListener(Listener):
 
     def __init__(self):
@@ -96,16 +97,8 @@ class ArduinoPowerListener(Listener):
         super().resume()
 
     def get_data(self):
-        start = time.time()
         with open(self.out_path) as in_file:
             strptime = datetime.datetime.strptime
-            # while True:
-            #     lines_cache = islice(in_file, 5)
-            #
-            #     if not lines_cache:
-            #         break
-
-                # data = []
 
             for line in in_file:
                 attribs = line.replace("\n", "").split(",")
@@ -143,7 +136,7 @@ class ArduinoPowerListener(Listener):
                 try:
                     if component in self.constants:
                         power = self.constants[component] * float(power)
-                    # timestamp = self.read_start_times[i] + delta_time
+                        # timestamp = self.read_start_times[i] + delta_time
 
                         if power <= 65000:
                             self.out_file.write(component + "," + str(timestamp) + "," + str(power) + "\n")
