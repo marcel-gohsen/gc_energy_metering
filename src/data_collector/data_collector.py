@@ -60,7 +60,8 @@ class DataCollector:
                             time_schedule.append((sched_id, begin_date, end_date))
                             self.db.update_data(table="run_schedule",
                                                 fields=["begin_time", "end_time"],
-                                                values=[begin_date.strftime("%Y-%m-%d %H:%M:%S.%f"), end_date.strftime("%Y-%m-%d %H:%M:%S.%f")],
+                                                values=[begin_date.strftime("%Y-%m-%d %H:%M:%S.%f"),
+                                                        end_date.strftime("%Y-%m-%d %H:%M:%S.%f")],
                                                 where_fields=["id"],
                                                 where_values=[str(sched_id)])
 
@@ -70,15 +71,15 @@ class DataCollector:
                     self.db.insert_data("run_eval", eval_data,
                                         fields=["id", "run", "status", "completion_time"])
 
-        print("[DB] Done in : " + str(round(time.time() - start_time, 4)) + "s")
+        print("[DB] Done in : " + str(round(time.time() - start_time, 2)) + "s")
 
-        print("[DB] Insert power data")
+        print("[DB] Insert power measurements")
         measurement_id = self.db.get_free_index("measurements")
-        average_power = {}
+
         for listener in self.listeners:
-            power_data = {}
             if isinstance(listener, ArduinoPowerListener):
                 print("[DB] Insert fine-grained measurements")
+                power_data = {}
                 start_time = time.time()
                 for data in listener.get_data():
                     if data is not None:
@@ -106,22 +107,19 @@ class DataCollector:
                         #     break
 
                 # print("FOR LOOP TIME " + str(time.time() - start))
-                print("[DB] Done in : " + str(round(time.time() - start_time, 4)) + "s")
+                print("[DB] Done in : " + str(round(time.time() - start_time, 2)) + "s")
 
             if isinstance(listener, PDUListener):
                 print("[DB] Insert coarse-grained measurements")
+                average_power = {}
+                measurements = []
                 start_time = time.time()
-                fields = ("id", "timestamp", "run", "power_total_active", "power_total_apparent",
-                          "current_total", "voltage_total")
 
                 for data in listener.get_data():
                     sched_id = self.db.get_run_idx(data[0], data[1])
 
                     if sched_id is not None:
-                        if fields not in power_data:
-                            power_data[fields] = []
-
-                        power_data[fields].append([
+                        measurements.append([
                             str(measurement_id),
                             str(data[0]),
                             str(sched_id),
@@ -138,49 +136,17 @@ class DataCollector:
 
                         average_power[sched_id].append(data[2])
 
-                print("[DB] Done in : " + str(round(time.time() - start_time, 4)) + "s")
+                self.db.insert_data("measurements", measurements,
+                                    ("id", "timestamp", "run", "power_total_active", "power_total_apparent",
+                                     "current_total", "voltage_total"))
 
-            for fields, values in power_data.items():
-                self.db.insert_data("measurements", values, fields)
+                average_power = dict(map(lambda x: (x, statistics.mean(average_power[x])), average_power))
 
-            average_power = dict(map(lambda x: (x, statistics.mean(average_power[x])), average_power))
+                for key, value in average_power.items():
+                    self.db.update_data("run_eval", ["power"], [str(value)], ["run"], [str(key)])
 
-            for key, value in average_power.items():
-                self.db.update_data("run_eval", ["power"], [str(value)], ["run"], [str(key)])
-
-            # if isinstance(listener, ArduinoPowerListener):
-            #     for _, _, sched_id in sched_id_times:
-            #         total_power = 0
-            #         for component in listener.component_tanslate.values():
-            #             results = self.db.execute(
-            #                 "SELECT AVG(" + component + ") FROM measurements WHERE run = " + str(
-            #                     sched_id) + ";")
-            #
-            #             if results[0][0] is not None:
-            #                 total_power += float(results[0][0])
-            #
-            #         self.db.execute(
-            #             "UPDATE run_eval SET power = " + str(total_power) + " WHERE run = " + str(
-            #                 sched_id) + ";",
-            #             result_set=False)
-            #
-            #     self.db.connection.commit()
+                print("[DB] Done in : " + str(round(time.time() - start_time, 2)) + "s")
 
             listener.resume()
 
         print("[DB] Done")
-
-    @staticmethod
-    def extract_date(date_str):
-        date_micros = int(int(date_str.split(" ")[2]) / 1000)
-        date_micros = str(date_micros).zfill(6)
-        date_str = " ".join(date_str.split(" ")[0:2]) + " " + date_micros
-
-        return datetime(
-                    day=int(date_str[:2]),
-                    month=int(date_str[3:5]),
-                    year=int(date_str[6:10]),
-                    hour=int(date_str[11:13]),
-                    minute=int(date_str[14:16]),
-                    second=int(date_str[17:19]),
-                    microsecond=int(date_str[20:]))

@@ -31,7 +31,7 @@ class Database:
         except mysql_err.Error as err:
             ErrorHandler.handle("DB", "Can't connect to " + host + ":" + str(port), err, terminate=True)
 
-        self.run_sched_cache = None
+        self.run_sched_cache = {}
 
     def __execute_query__(self, statement, parameter=None):
         try:
@@ -94,12 +94,11 @@ class Database:
         return res
 
     def get_run_idx(self, timestamp, host):
-        if self.run_sched_cache is not None:
-            if host == self.run_sched_cache[0]:
-                p_time = ciso8601.parse_datetime(timestamp)
+        if host in self.run_sched_cache:
+            p_time = ciso8601.parse_datetime(timestamp)
 
-                if self.run_sched_cache[1] <= p_time <= self.run_sched_cache[2]:
-                    return self.run_sched_cache[3]
+            if self.run_sched_cache[host]["begin"] <= p_time <= self.run_sched_cache[host]["end"]:
+                return self.run_sched_cache[host]["id"]
 
         statement = "SELECT id, begin_time, end_time FROM run_schedule " \
                     + "WHERE begin_time <= \"" + str(timestamp) + "\" AND end_time >= \"" + str(timestamp) + "\" " \
@@ -109,11 +108,13 @@ class Database:
         res = self.cursor.fetchall()
 
         if len(res) > 0:
-            self.run_sched_cache = (host, res[0][1], res[0][2], res[0][0])
+            # self.run_sched_cache = (host, res[0][1], res[0][2], res[0][0])
+            self.run_sched_cache[host] = {"id": res[0][0], "begin": res[0][1], "end": res[0][2]}
 
             return res[0][0]
         else:
-            self.run_sched_cache = None
+            if host in self.run_sched_cache:
+                del self.run_sched_cache[host]
 
     def request_id(self, table, ref_field, ref_value, values):
         res = self.get_indices_of(table, ref_field, ref_value)
