@@ -1,17 +1,19 @@
 import json
 
 from error_handling.error_handler import ErrorHandler
+from utility import path_handler
+import os.path as path
 
 
 class Benchmark:
     def __init__(self, bench_config_path):
         self.__parse_config(bench_config_path)
+        self.runs = []
 
     def __parse_config(self, bench_config_path):
         with open(bench_config_path) as conf_file:
             bench_conf = json.load(conf_file)
 
-            self.name = bench_conf["name"]
             self.command_name = bench_conf["command"]
 
             self.arguments = bench_conf["arguments"]
@@ -23,6 +25,8 @@ class Benchmark:
             self.explicit_binary = bench_conf["explicit-binary"]
 
             self.id = None
+
+        return self
 
     def create_exc_cmd(self, config):
         command = self.command_name
@@ -78,3 +82,6 @@ class Benchmark:
                     command += item
 
         return command
+
+    def add_run(self, run):
+        self.runs.append(run)

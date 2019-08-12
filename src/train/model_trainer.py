@@ -1,3 +1,11 @@
+def warn(*args, **kwargs):
+    pass
+
+
+import warnings
+
+warnings.warn = warn
+
 from sklearn.model_selection import learning_curve
 from sklearn.model_selection import train_test_split
 
@@ -10,6 +18,9 @@ from sklearn.metrics import mean_absolute_error
 import numpy as np
 import json
 import matplotlib.pyplot as plt
+from utility import path_handler
+import os.path as path
+import os
 
 
 class ModelTrainer:
@@ -24,6 +35,9 @@ class ModelTrainer:
         # self.clf = LinearRegression(normalize=True)
         self.db = db
         self.plotted_figures = 0
+
+        os.makedirs(path_handler.plot_root, exist_ok=True)
+        os.makedirs(path_handler.model_root, exist_ok=True)
 
     def train(self, sched_ids, benchmark_name):
         if len(sched_ids) == 0:
@@ -87,7 +101,8 @@ class ModelTrainer:
         )
 
         perf_estimator = [self.model_ridge_performance, self.model_dt_performance, self.model_rf_performance]
-        self.plot_learning_curve(perf_estimator, feature_vectors_performance, labels_performance, benchmark_name, "performance")
+        self.plot_learning_curve(perf_estimator, feature_vectors_performance, labels_performance, benchmark_name,
+                                 "performance")
 
         print("[MODEL] Train power models")
         print("[MODEL] Power examples: " + str(len(labels_total_power)))
@@ -120,7 +135,7 @@ class ModelTrainer:
         print("---------------------------")
         print()
 
-        with open("../data/models/" + benchmark_name + "_perf_infl_model.json", "w+") as out_file:
+        with open(path.join(path_handler.model_root, benchmark_name + "_perf_infl_model.json"), "w+") as out_file:
             json.dump(perf_infl_model, out_file, indent=4)
 
         self.plot_infl_model(perf_infl_model, benchmark_name, "performance")
@@ -137,7 +152,7 @@ class ModelTrainer:
 
         self.plot_infl_model(power_infl_model, benchmark_name, "power")
 
-        with open("../data/models/" + benchmark_name + "_power_infl_model.json", "w+") as out_file:
+        with open(path.join(path_handler.model_root, benchmark_name + "_power_infl_model.json"), "w+") as out_file:
             json.dump(power_infl_model, out_file, indent=4)
 
     def plot_learning_curve(self, estimators, features, labels, benchmark_name, key_word):
@@ -164,7 +179,8 @@ class ModelTrainer:
         plt.xlabel("Training examples")
         plt.ylabel("Mean absolute error")
         plt.legend()
-        plt.savefig("../data/plots/" + benchmark_name + "_" + key_word + "_learning_curve.png", transparent=True, dpi=200)
+        plt.savefig(path.join(path_handler.plot_root, benchmark_name + "_" + key_word + "_learning_curve.png"),
+                    transparent=True, dpi=200)
         # plt.show()
 
     def plot_infl_model(self, model, benchmark_name, key_word):
@@ -176,6 +192,6 @@ class ModelTrainer:
         plt.ylabel("Influence weight")
         plt.tight_layout(h_pad=0.2, w_pad=0.2)
         plt.grid()
-        plt.savefig("../data/plots/" + benchmark_name + "_" + key_word + "_influence_model.png", transparent=True,
-                    dpi=200)
+        plt.savefig(path.join(path_handler.plot_root, benchmark_name + "_" + key_word + "_influence_model.png"),
+                    transparent=True, dpi=200)
         # plt.show()

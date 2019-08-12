@@ -52,7 +52,10 @@ class CentralNormal(SamplingStrategy):
 
                 for _ in range(self.n):
                     mean_loc = random.choice([*mean_locs])
-                    value = int(np.random.normal(mean_loc,  2 * int(math.log2(len(feature_range)))))
+                    if self.scale is None:
+                        value = int(np.random.normal(mean_loc,  2 * int(math.log2(len(feature_range)))))
+                    else:
+                        value = int(np.random.normal(mean_loc, self.scale))
 
                     if value in feature_range:
                         feature_values[feature].append(value)
@@ -105,5 +108,5 @@ class CentralNormal(SamplingStrategy):
 
 
 if __name__ == '__main__':
-    sampler = CentralNormal(n=100000, feature_model=FeatureModel("../../../resources/target-systems/blender/blender.xml"))
-    sampler.sample()
+    sampler = CentralNormal(n=3, means=1, scale=0, feature_model=FeatureModel("../../../resources/target-systems/blender/blender.xml"))
+    print(sampler.sample())

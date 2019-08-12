@@ -66,7 +66,7 @@ class Database:
         res = self.cursor.fetchone()[0]
 
         if res is None:
-            res = -1
+            res = 0
 
         return res + 1
 

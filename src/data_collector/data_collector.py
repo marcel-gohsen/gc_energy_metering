@@ -10,6 +10,7 @@ from listeners.arduino_power_listener import ArduinoPowerListener
 from listeners.pdu_listener import PDUListener
 from error_handling.error_handler import ErrorHandler
 from utility import path_handler
+from utility.utilities import get_size
 
 
 class DataCollector:
@@ -28,18 +29,22 @@ class DataCollector:
         for listener in self.listeners:
             listener.pause()
 
-        time_schedule = []
+        # time_schedule = []
 
         print("[DB] Insert performance measures")
         start_time = time.time()
 
+        sched_id = self.db.get_free_index("run_schedule")
+        eval_id = self.db.get_free_index("run_eval")
+
+        sched_data = []
+        eval_data = []
+
         for (dirpath, dirnames, filenames) in os.walk(path_handler.slurm_nfs_bench_perf_root):
             for filename in filenames:
                 path = os.path.join(dirpath, filename)
-                eval_data = []
 
                 if filename.endswith(".ldjson"):
-                    eval_id = self.db.get_free_index("run_eval")
                     with open(path) as file:
                         for line in file:
                             data = json.loads(line)
@@ -48,28 +53,23 @@ class DataCollector:
 
                             completion_time = (end_date - begin_date)
 
-                            sched_id = self.db.get_indices_of(table="run_schedule",
-                                                              fields=["client_id", "repetition", "run_spec"],
-                                                              values=[
-                                                                  str(data["host"]),
-                                                                  str(data["repetition"]),
-                                                                  str(data["run_spec_id"])
-                                                              ])
-                            sched_id = sched_id[0]
-
-                            time_schedule.append((sched_id, begin_date, end_date))
-                            self.db.update_data(table="run_schedule",
-                                                fields=["begin_time", "end_time"],
-                                                values=[begin_date.strftime("%Y-%m-%d %H:%M:%S.%f"),
-                                                        end_date.strftime("%Y-%m-%d %H:%M:%S.%f")],
-                                                where_fields=["id"],
-                                                where_values=[str(sched_id)])
+                            sched_data.append([
+                                str(sched_id),
+                                str(data["run_spec_id"]),
+                                str(data["repetition"]),
+                                str(data["host"]),
+                                begin_date.strftime("%Y-%m-%d %H:%M:%S.%f"),
+                                end_date.strftime("%Y-%m-%d %H:%M:%S.%f")]
+                            )
 
                             eval_data.append([str(eval_id), str(sched_id), "OK", str(completion_time)])
+
+                            sched_id += 1
                             eval_id += 1
 
-                    self.db.insert_data("run_eval", eval_data,
-                                        fields=["id", "run", "status", "completion_time"])
+        self.db.insert_data("run_schedule", sched_data)
+        self.db.insert_data("run_eval", eval_data,
+                            fields=["id", "run", "status", "completion_time"])
 
         print("[DB] Done in : " + str(round(time.time() - start_time, 2)) + "s")
 
