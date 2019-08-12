@@ -42,6 +42,8 @@ class Launcher:
 
         self.model_trainer = ModelTrainer(self.db)
 
+        self.plotter = Plotter(self.db)
+
     def launch(self):
         self.sync_with_db()
 
@@ -148,11 +150,11 @@ def main():
     # fixed_data = [x for x in range(263279, 265704 + 1)]
     # fixed_data = [x for x in range(458125, 458214 + 1)]
 
+    # launcher.plotter.plot_power_curve(12)
     fixed_data = None
-
     if fixed_data is None:
         launcher.launch()
-    #
+
     # launcher.train_models(fixed_data)
     # launcher.evaluate(fixed_data)
 

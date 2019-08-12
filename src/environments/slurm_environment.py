@@ -184,7 +184,6 @@ class SlurmEnvironment(Environment):
             out_file.write("# <DATA PREPARATION>\n")
             out_file.write("srun mkdir -p " + job_name + "\n")
             out_file.write("cd " + job_name + "\n")
-            out_file.write("srun rm -f *\n")
 
             if self.benchmark.resources is not None:
                 for key, value in self.benchmark.resources.items():
@@ -222,28 +221,38 @@ class SlurmEnvironment(Environment):
         with open(path.join(path_handler.slurm_script_bench_root, job_name + "-cleanup.sh"), "w") as out_file:
             out_file.write("#!/bin/bash\n\n")
             out_file.write(
-                "cp -t " + path.join(path_handler.slurm_nfs_bench_perf_root) + " *.ldjson\n")
-            out_file.write("rm *.ldjson")
+                "cp -t " + path_handler.slurm_nfs_bench_perf_root + " *\".ldjson\"\n")
+            out_file.write("rm *\".ldjson\"\n")
+            out_file.write("rm *\"-workload-\"*\".sh\"")
 
     def create_workload_script(self, script_file_path, run):
         timestamp = "date --iso-8601=ns"
 
         with open(script_file_path, "w") as script_file:
             script_file.write("#!/bin/bash\n\n")
+            script_file.write("job_begin=$(" + timestamp + ")\n")
             script_file.write("host=$(hostname)\n")
             script_file.write("outfile=\"${SLURM_JOB_NAME}-${host}-measures.ldjson\"\n\n")
+
+            script_file.write("stress --cpu 8 --io 4 --vm 4 --vm-bytes 1024 --hdd 4 --timeout 5s\n")
+            script_file.write("sleep 10\n\n")
+
             script_file.write("begin=$(" + timestamp + ")\n")
             script_file.write(self.benchmark.create_exc_cmd(run.sw_config) + "\n")
             script_file.write("end=$(" + timestamp + ")\n\n")
 
-            script_file.write("echo \"{\\\"slurm_job_id\\\":\\\"${SLURM_ARRAY_JOB_ID}\\\", "
-                              "\\\"run_spec_id\\\":\\\"" + str(run.id) + "\\\", "
-                              "\\\"sw_config_id\\\":\\\"" + str(run.sw_config.id) + "\\\", "
-                              "\\\"repetition\\\":\\\"${SLURM_ARRAY_TASK_ID}\\\", "
-                              "\\\"host\\\":\\\"${host}\\\", "
-                              "\\\"command\\\":\\\"" + self.benchmark.create_exc_cmd(run.sw_config) + "\\\", "
-                              "\\\"begin\\\":\\\"${begin}\\\", "
-                              "\\\"end\\\":\\\"${end}\\\"}\" "
+            script_file.write("sleep 10\n")
+            script_file.write("job_end=$(" + timestamp + ")\n")
+            script_file.write("echo \"{\\\"slurm_job_id\\\":\\\"${SLURM_ARRAY_JOB_ID}\\\", " +
+                              "\\\"run_spec_id\\\":\\\"" + str(run.id) + "\\\", " +
+                              "\\\"sw_config_id\\\":\\\"" + str(run.sw_config.id) + "\\\", " +
+                              "\\\"repetition\\\":\\\"${SLURM_ARRAY_TASK_ID}\\\", " +
+                              "\\\"host\\\":\\\"${host}\\\", " +
+                              "\\\"command\\\":\\\"" + self.benchmark.create_exc_cmd(run.sw_config) + "\\\", " +
+                              "\\\"begin\\\":\\\"${begin}\\\", " +
+                              "\\\"end\\\":\\\"${end}\\\", " +
+                              "\\\"job_begin\\\":\\\"${job_begin}\\\", " +
+                              "\\\"job_end\\\":\\\"${job_end}\\\"}\" " +
                               "| tee -a \"${outfile}\"\n\n")
 
         return script_file_path

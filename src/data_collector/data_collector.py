@@ -48,18 +48,21 @@ class DataCollector:
                     with open(path) as file:
                         for line in file:
                             data = json.loads(line)
-                            begin_date = ciso8601.parse_datetime(data["begin"])
-                            end_date = ciso8601.parse_datetime(data["end"])
+                            begin_work = ciso8601.parse_datetime(data["begin"])
+                            end_work = ciso8601.parse_datetime(data["end"])
 
-                            completion_time = (end_date - begin_date)
+                            completion_time = (end_work - begin_work)
+
+                            begin_job = ciso8601.parse_datetime(data["job_begin"])
+                            end_job = ciso8601.parse_datetime(data["job_end"])
 
                             sched_data.append([
                                 str(sched_id),
                                 str(data["run_spec_id"]),
                                 str(data["repetition"]),
                                 str(data["host"]),
-                                begin_date.strftime("%Y-%m-%d %H:%M:%S.%f"),
-                                end_date.strftime("%Y-%m-%d %H:%M:%S.%f")]
+                                begin_job.strftime("%Y-%m-%d %H:%M:%S.%f"),
+                                end_job.strftime("%Y-%m-%d %H:%M:%S.%f")]
                             )
 
                             eval_data.append([str(eval_id), str(sched_id), "OK", str(completion_time)])

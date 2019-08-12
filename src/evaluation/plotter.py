@@ -95,3 +95,19 @@ class Plotter:
         plt.tight_layout(h_pad=0.2, w_pad=0.2)
         plt.savefig("../data/plots/" + benchmark_name + "_performance_by_host.png", transparent=True, dpi=200)
         # plt.show()
+
+    def plot_power_curve(self, run_id):
+        results = self.db.execute(
+            "SELECT timestamp, power_total_active, power_total_apparent, current_total, voltage_total FROM measurements WHERE run = " + str(run_id) + ";")
+
+        x_values = []
+        y_values = []
+        for row in results:
+            x_values.append(row[0])
+            y_values.append(row[2])
+
+        plt.figure()
+        plt.plot(x_values, y_values)
+        plt.xlabel("Time")
+        plt.ylabel("Power [VA]")
+        plt.show()

@@ -10,7 +10,7 @@ import datetime
 
 
 class PDUListener(Listener):
-    def __init__(self, outlets=range(0, 9), sample_rate=4):
+    def __init__(self, outlets=range(9, 18), sample_rate=4):
         super().__init__()
 
         self.pdu_address = "http://pdu001.medien.uni-weimar.de/cgi/get_param.cgi"

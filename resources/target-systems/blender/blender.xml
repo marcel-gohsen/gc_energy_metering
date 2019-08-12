@@ -116,7 +116,7 @@
       <impliedOptions />
       <excludedOptions />
       <minValue>1</minValue>
-      <maxValue>1024</maxValue>
+      <maxValue>8</maxValue>
       <stepFunction>threads + 1</stepFunction>
     </configurationOption>
     <configurationOption>

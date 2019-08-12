@@ -15,7 +15,7 @@ BINARY_SAMPLER = AllCombinations()
 NUMERIC_SAMPLER = CentralNormal(n=3, means=1, scale=0)
 
 DATA_DRY_RUN = False
-DATA_BUFFER_TIME = 30 # seconds
+DATA_BUFFER_TIME = 5 * 60  # seconds
 
 SLURM_PARTITION = Slurm.PARTITION_TESLA.value
 SLURM_NODE_CONF = Slurm.NODES_COARSE.value
