@@ -130,6 +130,7 @@ class SlurmEnvironment(Environment):
     def fetch_and_clean(self):
         self.wait_for_running_jobs(settings.BENCHMARK["name"])
 
+        os.system("rm -f " + path.join(path_handler.slurm_nfs_bench_perf_root, "*"))
         self.__exec_cmd__(["sbatch",
                            path.join(path_handler.slurm_script_bench_root,
                                      settings.BENCHMARK["name"] + "-cleanup-job.sh")])
@@ -213,7 +214,7 @@ class SlurmEnvironment(Environment):
             out_file.write(
                 "#SBATCH --chdir=/home/" + getpass.getuser() + "/benchmarks/" + settings.BENCHMARK["name"] + "\n\n")
 
-            out_file.write("rm -rf " + path.join(path_handler.slurm_nfs_bench_perf_root, "*") + "\n")
+            # out_file.write("rm " + path.join(path_handler.slurm_nfs_bench_perf_root, "*") + "\n")
             out_file.write("srun /bin/bash " + job_name + "-cleanup.sh")
 
     def create_cleanup_script(self):
@@ -221,9 +222,9 @@ class SlurmEnvironment(Environment):
         with open(path.join(path_handler.slurm_script_bench_root, job_name + "-cleanup.sh"), "w") as out_file:
             out_file.write("#!/bin/bash\n\n")
             out_file.write(
-                "cp -t " + path_handler.slurm_nfs_bench_perf_root + " *\".ldjson\"\n")
-            out_file.write("rm *\".ldjson\"\n")
-            out_file.write("rm *\"-workload-\"*\".sh\"")
+                "cp -t " + path_handler.slurm_nfs_bench_perf_root + " *.ldjson\n")
+            out_file.write("rm *.ldjson\n")
+            out_file.write("rm *-workload-*.sh")
 
     def create_workload_script(self, script_file_path, run):
         timestamp = "date --iso-8601=ns"
