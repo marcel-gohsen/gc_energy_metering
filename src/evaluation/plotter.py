@@ -1,6 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import os.path as path
 
+from utility import path_handler
+from settings import settings
 
 class Plotter:
     def __init__(self, db):
@@ -33,7 +36,7 @@ class Plotter:
         #
         # conditions = " OR ".join(["run={}"] * len(sched_ids)).format(*sched_ids)
 
-    def plot_energy_performance_tradeoff(self, sched_ids, benchmark_name, plot_id):
+    def plot_energy_performance_tradeoff(self, sched_ids, plot_id):
         plt.figure(plot_id)
         results = \
             self.db.execute("SELECT completion_time, power FROM run_eval where run in (" + (
@@ -67,10 +70,13 @@ class Plotter:
         # plt.ylim(0)
         plt.grid()
         plt.legend()
-        plt.savefig("../data/plots/" + benchmark_name + "_performance-power-tradeoff.png", dpi=200, transparent=True)
+        plt.savefig(
+            path.join(path_handler.plot_root, settings.BENCHMARK["name"] + "_performance-power-tradeoff.png"),
+            dpi=200,
+            transparent=True)
         # plt.show()
 
-    def plot_performance_by_host(self, sched_ids, benchmark_name, plot_id):
+    def plot_performance_by_host(self, sched_ids, plot_id):
         plt.figure(plot_id)
         results = \
             self.db.execute("SELECT completion_time, client_id FROM run_eval"
@@ -93,7 +99,10 @@ class Plotter:
         plt.ylabel("Completion time [s]")
         plt.xticks(rotation=90)
         plt.tight_layout(h_pad=0.2, w_pad=0.2)
-        plt.savefig("../data/plots/" + benchmark_name + "_performance_by_host.png", transparent=True, dpi=200)
+        plt.savefig(
+            path.join(path_handler.plot_root, settings.BENCHMARK["name"] + "_performance_by_host.png"),
+            transparent=True,
+            dpi=200)
         # plt.show()
 
     def plot_power_curve(self, run_id):
@@ -110,4 +119,12 @@ class Plotter:
         plt.plot(x_values, y_values)
         plt.xlabel("Time")
         plt.ylabel("Power [VA]")
-        plt.show()
+        plt.ylim((0, 70))
+        plt.xticks(rotation=35)
+        plt.tight_layout()
+        plt.savefig(
+            path.join(path_handler.plot_root, settings.BENCHMARK["name"] + "_measurement_curve_" + str(run_id) + ".png"),
+            dpi=200,
+            transparent=True
+        )
+        # plt.show()

@@ -4,7 +4,7 @@ import copy
 import json
 import os.path as path
 import time
-
+import random
 
 from settings import settings
 from sampling.sampler import sample_configs
@@ -35,14 +35,11 @@ class Launcher:
         self.sampled_configs = sample_configs(feature_model)
 
         self.benchmark = Benchmark(bench_config_path=path_handler.bench_config_path)
-        # self.runs = []
 
         self.environment = environment(self.data_collector)
         self.evaluator = Plotter(self.db)
 
         self.model_trainer = ModelTrainer(self.db)
-
-        self.plotter = Plotter(self.db)
 
     def launch(self):
         self.sync_with_db()
@@ -64,9 +61,14 @@ class Launcher:
         else:
             ids = fixed_data
 
-        self.evaluator.plot_energy_performance_tradeoff(ids, settings.BENCHMARK["name"], self.model_trainer.plotted_figures)
+        self.evaluator.plot_energy_performance_tradeoff(ids, self.model_trainer.plotted_figures)
         self.model_trainer.plotted_figures += 1
-        self.evaluator.plot_performance_by_host(ids, settings.BENCHMARK["name"], self.model_trainer.plotted_figures)
+        self.evaluator.plot_performance_by_host(ids,  self.model_trainer.plotted_figures)
+        self.model_trainer.plotted_figures += 1
+
+        self.evaluator.plot_power_curve(random.choice(ids))
+        self.model_trainer.plotted_figures += 1
+        self.evaluator.plot_power_curve(679)
         self.model_trainer.plotted_figures += 1
 
     def train_models(self, fixed_data=None):
@@ -90,10 +92,6 @@ class Launcher:
                                                         [settings.BENCHMARK["name"], bench_cmd])
         self.benchmark.id = self.id_cache["benchmark"]
 
-        sched_data = []
-        # sched_id = self.db.get_free_index("run_schedule")
-        self.id_cache["run_sched"] = []
-
         for config in self.sampled_configs:
             feature_hash = config.compute_hash()
             bin_features = config.get_binary_features()
@@ -113,28 +111,12 @@ class Launcher:
                 RunSpecification(run_id, config, hw_conf_id)
             )
 
-            if len(self.benchmark.runs) == 1:
-                break
+            # if len(self.benchmark.runs) == 1:
+            #     break
 
-            # result = self.db.execute("SELECT max(repetition) FROM run_schedule WHERE run_spec = " + str(run_id) + ";")
-            #
-            # rep_start = result[0][0]
-            # if rep_start is None:
-            #     rep_start = 1
-            # else:
-            #     rep_start += 1
-            #
-            # for client in settings.SLURM_NODE_LIST.split(","):
-            #     rep = rep_start
-            #     for i in range(rep_start, rep_start + settings.RUN_REPETITIONS):
-            #         self.id_cache["run_sched"].append(sched_id)
-            #         sched_data.append([str(sched_id), str(run_id), str(rep), client])
-            #
-            #         rep += 1
-            #         sched_id += 1
-            #
-
-        self.db.insert_data("run_schedule", sched_data, ["id", "run_spec", "repetition", "client_id"])
+        sched_id = self.db.get_free_index("run_schedule")
+        self.id_cache["run_sched"] = [x for x in
+                                      range(sched_id, sched_id + settings.RUN_REPETITIONS * len(self.benchmark.runs))]
 
     def shutdown(self):
         print("[LAUNCH] Shutdown...")
@@ -143,20 +125,15 @@ class Launcher:
 
 def main():
     launcher = Launcher(SlurmEnvironment)
-    # fixed_data = [x for x in range(245565, 245654 + 1)]
-    # fixed_data = [x for x in range(246567, 247556 + 1)]
-    # fixed_data = [x for x in range(250527, 261326 + 1)]
-    # fixed_data = [x for x in range(261867, 262046 + 1)]
-    # fixed_data = [x for x in range(263279, 265704 + 1)]
-    # fixed_data = [x for x in range(458125, 458214 + 1)]
-
-    # launcher.plotter.plot_power_curve(5)
     fixed_data = None
+
+    fixed_data = [x for x in range(21, 740 + 1)]
+
     if fixed_data is None:
         launcher.launch()
 
-    # launcher.train_models(fixed_data)
-    # launcher.evaluate(fixed_data)
+    launcher.train_models(fixed_data)
+    launcher.evaluate(fixed_data)
 
     atexit.register(launcher.shutdown)
 

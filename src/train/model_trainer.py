@@ -27,11 +27,11 @@ class ModelTrainer:
     def __init__(self, db):
         self.model_ridge_performance = Ridge()
         self.model_dt_performance = DecisionTreeRegressor()
-        self.model_rf_performance = RandomForestRegressor(n_estimators=10)
+        self.model_rf_performance = RandomForestRegressor(n_estimators=100)
 
         self.model_ridge_power = Ridge()
         self.model_dt_power = DecisionTreeRegressor()
-        self.model_rf_power = RandomForestRegressor(n_estimators=10)
+        self.model_rf_power = RandomForestRegressor(n_estimators=100)
         # self.clf = LinearRegression(normalize=True)
         self.db = db
         self.plotted_figures = 0
