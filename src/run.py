@@ -66,10 +66,10 @@ class Launcher:
         self.evaluator.plot_performance_by_host(ids,  self.model_trainer.plotted_figures)
         self.model_trainer.plotted_figures += 1
 
-        self.evaluator.plot_power_curve(random.choice(ids))
+        self.evaluator.plot_power_curve(730)
         self.model_trainer.plotted_figures += 1
-        self.evaluator.plot_power_curve(679)
-        self.model_trainer.plotted_figures += 1
+        # self.evaluator.plot_power_curve(random.choice(ids))
+        # self.model_trainer.plotted_figures += 1
 
     def train_models(self, fixed_data=None):
         if fixed_data is None:
@@ -111,8 +111,8 @@ class Launcher:
                 RunSpecification(run_id, config, hw_conf_id)
             )
 
-            # if len(self.benchmark.runs) == 1:
-            #     break
+            if len(self.benchmark.runs) == 10:
+                break
 
         sched_id = self.db.get_free_index("run_schedule")
         self.id_cache["run_sched"] = [x for x in
@@ -127,12 +127,13 @@ def main():
     launcher = Launcher(SlurmEnvironment)
     fixed_data = None
 
-    fixed_data = [x for x in range(21, 740 + 1)]
+    # fixed_data = [x for x in range(21, 740 + 1)]
+    fixed_data = [x for x in range(698, 748 + 1)]
 
     if fixed_data is None:
         launcher.launch()
 
-    launcher.train_models(fixed_data)
+    # launcher.train_models(fixed_data)
     launcher.evaluate(fixed_data)
 
     atexit.register(launcher.shutdown)

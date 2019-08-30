@@ -1,9 +1,15 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import os.path as path
+import datetime
+from scipy.signal import find_peaks
+from scipy.signal import peak_widths
+import pandas
+import seaborn as sns
 
 from utility import path_handler
 from settings import settings
+
 
 class Plotter:
     def __init__(self, db):
@@ -107,23 +113,41 @@ class Plotter:
 
     def plot_power_curve(self, run_id):
         results = self.db.execute(
-            "SELECT timestamp, power_total_active, power_total_apparent, current_total, voltage_total FROM measurements WHERE run = " + str(run_id) + ";")
+            "SELECT timestamp, power_total_active, power_total_apparent, current_total, voltage_total, work_begin_time, work_end_time, peak_time FROM measurements AS m " +
+            "JOIN run_schedule as s ON s.id = m.run WHERE run = " + str(run_id) + ";")
 
-        x_values = []
-        y_values = []
-        for row in results:
-            x_values.append(row[0])
-            y_values.append(row[2])
+        df = pandas.DataFrame.from_records(results,
+                                           columns=["timestamp", "active_power", "apparent_power", "current", "voltage",
+                                                    "work_begin_time", "work_end_time", "peak_time"])
+
+        peak_indices, _ = find_peaks(df["active_power"])
+        peak_start_index = 0
+
+        if len(peak_indices) > 0:
+            peak_ws = peak_widths(df["active_power"], peak_indices)[0]
+            peak_start_index = int(peak_indices[0] - round((peak_ws[0] / 2)))
+
+        # print(peak_ws[0])
 
         plt.figure()
-        plt.plot(x_values, y_values)
+        plt.plot(df["timestamp"], df["active_power"],
+                 markevery=[peak_start_index],
+                 marker="x",
+                 markeredgecolor="red")
+
+        offset = df["timestamp"][peak_start_index] - df["peak_time"][0]
+
+        plt.axvline(df["work_begin_time"][0] + offset, color="red")
+        plt.axvline(df["work_end_time"][0] + offset, color="red")
+
         plt.xlabel("Time")
         plt.ylabel("Power [VA]")
         plt.ylim((0, 70))
         plt.xticks(rotation=35)
         plt.tight_layout()
         plt.savefig(
-            path.join(path_handler.plot_root, settings.BENCHMARK["name"] + "_measurement_curve_" + str(run_id) + ".png"),
+            path.join(path_handler.plot_root,
+                      settings.BENCHMARK["name"] + "_measurement_curve_" + str(run_id) + ".png"),
             dpi=200,
             transparent=True
         )

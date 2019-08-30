@@ -124,6 +124,9 @@ class SlurmEnvironment(Environment):
                           path.join(path_handler.target_systems_root, settings.BENCHMARK["name"], value) + " "
                           + path_handler.slurm_script_bench_root)
 
+        os.makedirs(path_handler.slurm_nfs_bench_root, exist_ok=True)
+        os.system("rm -rf " + path.join(path_handler.slurm_nfs_bench_root, "*"))
+
         os.makedirs(path_handler.slurm_nfs_bench_perf_root, exist_ok=True)
         os.system("rm -f " + path.join(path_handler.slurm_nfs_bench_perf_root, "*"))
 
@@ -156,9 +159,9 @@ class SlurmEnvironment(Environment):
                 for key, value in self.benchmark.resources.items():
                     out_file.write("cp " + value + " " + path_handler.slurm_nfs_bench_root + "\n")
 
-            out_file.write("cp -P " + job_name + "-workload-*.sh " + path_handler.slurm_nfs_bench_root + " \n")
-            out_file.write("sleep 1\n")
-            out_file.write("cp " + job_name + "-cleanup.sh " + path_handler.slurm_nfs_bench_root + " \n\n")
+            out_file.write("cp -f " + job_name + "-workload-*.sh " + path_handler.slurm_nfs_bench_root + " \n")
+            # out_file.write("sleep 1\n")
+            out_file.write("cp -f " + job_name + "-cleanup.sh " + path_handler.slurm_nfs_bench_root + " \n\n")
             out_file.write("# <PARALLEL EXECUTION>\n")
             out_file.write("sbatch " + job_name + "-slurm-job.sh\n")
             out_file.write("popd")
@@ -178,8 +181,8 @@ class SlurmEnvironment(Environment):
             if settings.SLURM_NODE_CONF["exclude"] is not None:
                 out_file.write("#SBATCH --exclude=" + settings.SLURM_NODE_CONF["exclude"] + "\n")
 
-            out_file.write("#SBATCH --output=%x-%N.out\n")
-            out_file.write("#SBATCH --error=%x-%N.err\n")
+            out_file.write("#SBATCH --output=%x-%N-%j.out\n")
+            out_file.write("#SBATCH --error=%x-%N-%a.err\n")
             out_file.write("#SBATCH --chdir=/home/" + getpass.getuser() + "/benchmarks/\n\n")
 
             out_file.write("# <DATA PREPARATION>\n")
@@ -189,13 +192,14 @@ class SlurmEnvironment(Environment):
             if self.benchmark.resources is not None:
                 for key, value in self.benchmark.resources.items():
                     out_file.write(
-                        "srun cp " + path.join(path_handler.slurm_nfs_bench_root, value) + " .\n"
+                        "srun cp -f " + path.join(path_handler.slurm_nfs_bench_root, value) + " .\n"
                     )
 
             out_file.write(
-                "srun cp -L \"" + path.join(path_handler.slurm_nfs_bench_root, job_name + "-workload-${SLURM_ARRAY_TASK_ID}.sh") + "\" .\n")
+                "srun cp -f \"" + path.join(path_handler.slurm_nfs_bench_root,
+                                            job_name + "-workload-${SLURM_ARRAY_TASK_ID}.sh") + "\" .\n")
             out_file.write(
-                "srun cp " + path.join(path_handler.slurm_nfs_bench_root, job_name + "-cleanup.sh") + " .\n\n")
+                "srun cp -f " + path.join(path_handler.slurm_nfs_bench_root, job_name + "-cleanup.sh") + " .\n\n")
 
             out_file.write("# <JOB EXECUTION>\n")
             out_file.write("srun /bin/bash \"" + job_name + "-workload-${SLURM_ARRAY_TASK_ID}.sh\"\n\n")
@@ -209,8 +213,8 @@ class SlurmEnvironment(Environment):
             out_file.write("#SBATCH --nodelist=" + settings.SLURM_NODE_CONF["include"] + "\n")
             out_file.write("#SBATCH --partition=" + settings.SLURM_PARTITION + "\n")
             out_file.write("#SBATCH --ntasks-per-node=1\n")
-            out_file.write("#SBATCH --output=%x-%N.out\n")
-            out_file.write("#SBATCH --error=%x-%N.err\n")
+            # out_file.write("#SBATCH --output=%x-%N-%j.out\n")
+            out_file.write("#SBATCH --error=%x-%N-%j.err\n")
             out_file.write(
                 "#SBATCH --chdir=/home/" + getpass.getuser() + "/benchmarks/" + settings.BENCHMARK["name"] + "\n\n")
 
@@ -221,10 +225,21 @@ class SlurmEnvironment(Environment):
         job_name = settings.BENCHMARK["name"]
         with open(path.join(path_handler.slurm_script_bench_root, job_name + "-cleanup.sh"), "w") as out_file:
             out_file.write("#!/bin/bash\n\n")
+            # out_file.write(
+            #     "cp -t " + path_handler.slurm_nfs_bench_perf_root + " *.ldjson\n")
             out_file.write(
-                "cp -t " + path_handler.slurm_nfs_bench_perf_root + " *.ldjson\n")
-            out_file.write("rm *.ldjson\n")
-            out_file.write("rm *-workload-*.sh")
+                "find ../ -not -empty -type f -name \"*.err\" -o -name \"*.ldjson\" | xargs -r cp -t "
+                + path_handler.slurm_nfs_bench_perf_root + "\n\n"
+            )
+
+            out_file.write(
+                "find ../ -type f -name \"*.err\" -o -name \"*.ldjson\" -o -name \"*-workload-*.sh\" -o -name "
+                "\"*.out\" | xargs -r rm -f"
+            )
+            # out_file.write("rm *.ldjson\n")
+            # out_file.write("rm *-workload-*.sh\n")
+            # out_file.write("rm *.err\n")
+            # out_file.write("rm *.out")
 
     def create_workload_script(self, script_file_path, run):
         timestamp = "date --iso-8601=ns"
@@ -232,9 +247,12 @@ class SlurmEnvironment(Environment):
         with open(script_file_path, "w") as script_file:
             script_file.write("#!/bin/bash\n\n")
             script_file.write("job_begin=$(" + timestamp + ")\n")
+            script_file.write("sleep 1\n\n")
+
             script_file.write("host=$(hostname)\n")
             script_file.write("outfile=\"${SLURM_JOB_NAME}-${host}-measures.ldjson\"\n\n")
 
+            script_file.write("peak=$(" + timestamp + ")\n")
             script_file.write("stress --cpu 8 --io 4 --vm 4 --vm-bytes 1024 --hdd 4 --timeout 5s\n")
             script_file.write("sleep 10\n\n")
 
@@ -253,7 +271,8 @@ class SlurmEnvironment(Environment):
                               "\\\"begin\\\":\\\"${begin}\\\", " +
                               "\\\"end\\\":\\\"${end}\\\", " +
                               "\\\"job_begin\\\":\\\"${job_begin}\\\", " +
-                              "\\\"job_end\\\":\\\"${job_end}\\\"}\" " +
+                              "\\\"job_end\\\":\\\"${job_end}\\\", " +
+                              "\\\"peak\\\":\\\"${peak}\\\"}\" " +
                               "| tee -a \"${outfile}\"\n\n")
 
         return script_file_path

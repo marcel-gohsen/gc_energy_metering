@@ -56,13 +56,18 @@ class DataCollector:
                             begin_job = ciso8601.parse_datetime(data["job_begin"])
                             end_job = ciso8601.parse_datetime(data["job_end"])
 
+                            peak = ciso8601.parse_datetime(data["peak"])
+
                             sched_data.append([
                                 str(sched_id),
                                 str(data["run_spec_id"]),
                                 str(data["repetition"]),
                                 str(data["host"]),
                                 begin_job.strftime("%Y-%m-%d %H:%M:%S.%f"),
-                                end_job.strftime("%Y-%m-%d %H:%M:%S.%f")]
+                                end_job.strftime("%Y-%m-%d %H:%M:%S.%f"),
+                                begin_work.strftime("%Y-%m-%d %H:%M:%S.%f"),
+                                end_work.strftime("%Y-%m-%d %H:%M:%S.%f"),
+                                peak.strftime("%Y-%m-%d %H:%M:%S.%f")]
                             )
 
                             eval_data.append([str(eval_id), str(sched_id), "OK", str(completion_time)])
