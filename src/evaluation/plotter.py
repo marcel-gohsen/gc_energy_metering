@@ -1,14 +1,13 @@
+import os.path as path
+
 import matplotlib.pyplot as plt
 import numpy as np
-import os.path as path
-import datetime
+import pandas
 from scipy.signal import find_peaks
 from scipy.signal import peak_widths
-import pandas
-import seaborn as sns
 
-from utility import path_handler
 from settings import settings
+from utility import path_handler
 
 
 class Plotter:
@@ -124,8 +123,15 @@ class Plotter:
         peak_start_index = 0
 
         if len(peak_indices) > 0:
-            peak_ws = peak_widths(df["active_power"], peak_indices)[0]
-            peak_start_index = int(peak_indices[0] - round((peak_ws[0] / 2)))
+            peak_ws = peak_widths(df["active_power"], peak_indices)[2]
+            peak_start_index = int(peak_ws[0])
+
+            # for num_peak in range(len(peak_indices)):
+            #     peak_height = df["active_power"][peak_indices[num_peak]]
+            #
+            #     if peak_height > 50:
+            #         peak_start_index = int(peak_indices[num_peak] - round((peak_ws[num_peak] / 2)))
+            #         break
 
         # print(peak_ws[0])
 
