@@ -119,35 +119,41 @@ class Plotter:
                                            columns=["timestamp", "active_power", "apparent_power", "current", "voltage",
                                                     "work_begin_time", "work_end_time", "peak_time"])
 
-        peak_indices, _ = find_peaks(df["active_power"])
+        peak_indices, _ = find_peaks(df["apparent_power"])
         peak_start_index = 0
 
         if len(peak_indices) > 0:
-            peak_ws = peak_widths(df["active_power"], peak_indices)[2]
+            peak_ws = peak_widths(df["apparent_power"], peak_indices)[2]
             peak_start_index = int(peak_ws[0])
 
-            # for num_peak in range(len(peak_indices)):
-            #     peak_height = df["active_power"][peak_indices[num_peak]]
-            #
-            #     if peak_height > 50:
-            #         peak_start_index = int(peak_indices[num_peak] - round((peak_ws[num_peak] / 2)))
-            #         break
-
-        # print(peak_ws[0])
+        # df = df[df["timestamp"] >= df.iloc[0]["work_begin_time"]]
+        # df = df[df["timestamp"] <= df.iloc[0]["work_end_time"]]
 
         plt.figure()
-        plt.plot(df["timestamp"], df["active_power"],
+        plt.plot(df["timestamp"], df["apparent_power"],
                  markevery=[peak_start_index],
                  marker="x",
-                 markeredgecolor="red")
+                 markeredgecolor="k",
+                 color="#8bc34a")
+
+        # plt.scatter(list(pandas.to_timedelta(df['timestamp'], errors="coerce").dt.total_seconds()), df["active_power"],
+        #             # markevery=[peak_start_index],
+        #             marker="x",
+        #             # markeredgecolor="k",
+        #             s=0.1,
+        #             color="#8bc34a")
 
         offset = df["timestamp"][peak_start_index] - df["peak_time"][0]
 
-        plt.axvline(df["work_begin_time"][0] + offset, color="red")
-        plt.axvline(df["work_end_time"][0] + offset, color="red")
+        # offset = datetime.timedelta()
+
+        plt.axvline(df["work_begin_time"][0] + offset, color="k")
+        plt.axvline(df["work_end_time"][0] + offset, color="k")
+
+
 
         plt.xlabel("Time")
-        plt.ylabel("Power [VA]")
+        plt.ylabel("Power [W]")
         plt.ylim((0, 70))
         plt.xticks(rotation=35)
         plt.tight_layout()

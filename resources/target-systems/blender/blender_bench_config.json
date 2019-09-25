@@ -2,7 +2,7 @@
   "name": "blender-bench",
   "command": "blender",
   "arguments": {"render-output": "--render-output //heli", "render-frame":  "--render-frame 1", "engine":  "--engine CYCLES"},
-  "resources": {"scene-file": "scene-Helicopter-27.blend"},
+  "resources": {"scene-file": "scene-Helicopter-27-fullhd-plus.blend"},
   "pattern": [
     "blender",
     "background",

@@ -1,12 +1,15 @@
-from listeners.listener import Listener
-import requests
-import time
-import itertools
-import xml.etree.ElementTree as ET
-import uuid
-import os
-import json
 import datetime
+import itertools
+import json
+import os
+import os.path as path
+import time
+import xml.etree.ElementTree as ET
+
+import requests
+
+from listeners.listener import Listener
+from utility import path_handler
 
 
 class PDUListener(Listener):
@@ -38,12 +41,12 @@ class PDUListener(Listener):
         self.outlets = outlets
         self.sample_interval = 1 / sample_rate
         self.process_time = float("inf")
-        self.out_path = "../../data/buffer/"
+        self.out_path = path_handler.buffer_root
 
         if not os.path.exists(self.out_path):
             os.makedirs(self.out_path)
 
-        self.out_path += "pdu.jsonld"
+        self.out_path = path.join(self.out_path, "pdu.jsonld")
         self.out_file = open(self.out_path, "w+")
 
         self.is_writing = False

@@ -6,32 +6,41 @@ import warnings
 
 warnings.warn = warn
 
-from sklearn.model_selection import learning_curve
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import Ridge
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import cross_validate
 from sklearn.metrics import make_scorer
 from sklearn.metrics import mean_squared_error
-from scipy.signal import find_peaks
-from scipy.signal import peak_widths
+from sklearn.metrics import mean_absolute_error
+
 import numpy as np
 import json
 import matplotlib.pyplot as plt
 from utility import path_handler
 import os.path as path
 import os
-import pandas
-import datetime
+import pandas as pd
+import random
+import copy
+
+import train.alignment as alignment
+import train.aggregation as aggregation
+import seaborn as sns
+
+
+def mean_absolute_percentage_error(y_true, y_pred):
+    y_true, y_pred = np.array(y_true), np.array(y_pred)
+    return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
 
 
 class ModelTrainer:
     def __init__(self, db):
-        self.model_ridge_performance = LinearRegression()
+        self.model_ridge_performance = Ridge()
         self.model_dt_performance = DecisionTreeRegressor()
-        self.model_rf_performance = RandomForestRegressor(n_estimators=100)
+        self.model_rf_performance = RandomForestRegressor(n_estimators=1)
 
-        self.model_ridge_power = LinearRegression()
+        self.model_ridge_power = Ridge()
         self.model_dt_power = DecisionTreeRegressor()
         self.model_rf_power = RandomForestRegressor(n_estimators=100)
         # self.clf = LinearRegression(normalize=True)
@@ -44,60 +53,47 @@ class ModelTrainer:
     def filter_measurements(self, measurements, mapping_func):
         offset = mapping_func(measurements)
 
-        work_begin = measurements.iloc[0]["work_begin_time"] + offset
-        work_end = measurements.iloc[0]["work_end_time"] + offset
+        work_begin = measurements.iloc[0]["work_begin_time"]
+        work_end = measurements.iloc[0]["work_end_time"]
 
-        measurements = measurements[measurements["timestamp"] >= work_begin]
-        measurements = measurements[measurements["timestamp"] <= work_end]
+        filtered = measurements[measurements["timestamp"] >= work_begin + offset]
+        filtered = filtered[filtered["timestamp"] <= work_end + offset]
 
-        return measurements
+        if filtered.empty:
+            filtered = measurements[measurements["timestamp"] >= work_begin]
+            filtered = filtered[filtered["timestamp"] <= work_end]
 
-    def map_peak_start(self, measurements):
-        peak_indices, _ = find_peaks(measurements["active_power"])
-        peak_start_index = 0
+        return filtered
 
-        if len(peak_indices) > 0:
-            peak_flank = peak_widths(measurements["active_power"], peak_indices)[2]
+    def collect_measurements(self, sched_ids, alignment_strategy, aggregation_strategy):
+        measurements = self.db.execute(
+            "SELECT s.id, timestamp, power_total_active, power_total_apparent, work_begin_time, work_end_time, peak_time FROM measurements AS m " +
+            "JOIN run_schedule as s ON s.id = m.run WHERE run IN (" + ", ".join(str(x) for x in sched_ids) + ");"
+        )
 
+        df = pd.DataFrame.from_records(measurements,
+                                       columns=["id", "timestamp", "active_power", "apparent_power",
+                                                "work_begin_time", "work_end_time", "peak_time"])
 
-            # power = measurements.iloc[i]["active_power"]
-            peak_start_index = int(peak_flank[0])
+        power_per_run = {}
+        for run in df.groupby("id"):
+            filtered_measurements = self.filter_measurements(run[1], alignment_strategy)
+            power_per_run[run[1].iloc[0]["id"]] = aggregation_strategy(filtered_measurements)
 
-            # peak_start_index = int(peak_indices[0] - round((peak_flank[0] / 2)))
-
-        return measurements.iloc[peak_start_index]["timestamp"] - measurements.iloc[0]["peak_time"]
-
-    def map_peak(self, measurements):
-        peak_indices, _ = find_peaks(measurements["active_power"])
-        peak_start_index = 0
-
-        if len(peak_indices) > 0:
-            peak_start_index = peak_indices[0]
-
-        return measurements.iloc[peak_start_index]["timestamp"] - measurements.iloc[0]["peak_time"]
-
-    def map_naiv(self, measurements):
-        return datetime.timedelta()
-
-    def aggregate_mean(self, measurements):
-        return measurements["active_power"].mean()  # W
-
-    def aggregate_mean_over_time(self, measurements):
-        mean_power = measurements["active_power"].mean()
-
-        run_time = measurements.iloc[0]["work_end_time"] - measurements.iloc[0]["work_begin_time"]
-
-        return mean_power / run_time.total_seconds()  # W/s
+        return power_per_run
 
     def train(self, sched_ids, benchmark_name):
         if len(sched_ids) == 0:
             return
 
-        feature_vectors_performance = []
-        feature_vectors_power = []
-        labels_performance = []
-        labels_total_power = []
+        perf_estimators = [self.model_ridge_performance, self.model_dt_performance, self.model_rf_performance]
+        power_estimators = [self.model_ridge_power, self.model_dt_power, self.model_rf_power]
 
+        alignment_strategies = [alignment.naiv, alignment.peak, alignment.peak_start]
+        aggregation_strategies = [aggregation.mean, aggregation.cumulate, aggregation.energy_naiv,
+                                  aggregation.energy_integration]
+
+        power_cross_val_results = []
         feature_names = None
 
         print("[MODEL] IDS: " + str(sched_ids))
@@ -107,177 +103,199 @@ class ModelTrainer:
             "INNER JOIN (run_spec, conf_sw, run_eval) ON (run_schedule.run_spec = run_spec.id AND run_spec.sw_conf = conf_sw.id AND run_schedule.id = run_eval.run)" +
             "WHERE run_schedule.id IN (" + ", ".join(str(x) for x in sched_ids) + ");")
 
-        measurements = self.db.execute(
-            "SELECT s.id, timestamp, power_total_active, power_total_apparent, work_begin_time, work_end_time, peak_time FROM measurements AS m " +
-            "JOIN run_schedule as s ON s.id = m.run WHERE run IN (" + ", ".join(str(x) for x in sched_ids) + ");"
-        )
+        for alignment_strategy in alignment_strategies:
+            for aggregation_strategy in aggregation_strategies:
+                feature_vectors_performance = []
+                feature_vectors_power = []
+                labels_performance = []
+                labels_total_power = []
 
-        df = pandas.DataFrame.from_records(measurements,
-                                           columns=["id", "timestamp", "active_power", "apparent_power",
-                                                    "work_begin_time", "work_end_time", "peak_time"])
+                measurements = self.collect_measurements(sched_ids, alignment_strategy, aggregation_strategy)
 
-        power_per_run = {}
-        for run in df.groupby("id"):
-            filtered_measurements = self.filter_measurements(run[1], self.map_peak_start)
-            power_per_run[run[1].iloc[0]["id"]] = self.aggregate_mean_over_time(filtered_measurements)
+                for config in configs:
+                    bin_features = [x for x in json.loads(config[1]).keys()]
+                    bin_values = json.loads(config[1]).values()
+                    conf = np.array([1.0 if x else 0.0 for x in bin_values])
 
-        for config in configs:
-            bin_features = [x for x in json.loads(config[1]).keys()]
-            bin_values = json.loads(config[1]).values()
-            conf = np.array([1.0 if x else 0.0 for x in bin_values])
+                    num_features = [x for x in json.loads(config[2]).keys()]
+                    num_conf = json.loads(config[2]).values()
 
-            num_features = [x for x in json.loads(config[2]).keys()]
-            num_conf = json.loads(config[2]).values()
+                    conf = np.append(conf, np.array([x for x in num_conf]))
 
-            conf = np.append(conf, np.array([x for x in num_conf]))
+                    feature_vectors_performance.append(conf)
 
-            feature_vectors_performance.append(conf)
+                    labels_performance.append(config[3].total_seconds())
 
-            labels_performance.append(config[3].total_seconds())
+                    feature_vectors_power.append(conf)
+                    labels_total_power.append(measurements[config[0]])
 
-            feature_vectors_power.append(conf)
-            labels_total_power.append(power_per_run[config[0]])
+                    if feature_names is None:
+                        feature_names = []
+                        feature_names.extend(bin_features)
+                        feature_names.extend(num_features)
 
-            if feature_names is None:
-                feature_names = []
-                feature_names.extend(bin_features)
-                feature_names.extend(num_features)
+                print("[MODEL] Train performance models")
+                print("[Model] Performance examples: " + str(len(labels_performance)))
 
-        print("[MODEL] Train performance models")
-        print("[Model] Performance examples: " + str(len(labels_performance)))
+                self.plot_learning_curve(
+                    perf_estimators,
+                    feature_vectors_performance,
+                    labels_performance,
+                    benchmark_name,
+                    "performance_" + alignment_strategy.__name__ + "_" + aggregation_strategy.__name__)
 
-        # print(feature_vectors)
-        # train_features, test_features, train_labels, test_labels = train_test_split(feature_vectors, labels)
+                print("[MODEL] Cross-validate performance")
+                self.cross_validate(perf_estimators, feature_vectors_performance, labels_performance)
 
-        self.model_ridge_performance.fit(
-            feature_vectors_performance,
-            labels_performance)
+                print("[MODEL] Train power models")
+                print("[MODEL] Power examples: " + str(len(labels_total_power)))
 
-        self.model_dt_performance.fit(
-            feature_vectors_performance,
-            labels_performance
-        )
+                self.plot_learning_curve(
+                    power_estimators,
+                    feature_vectors_power,
+                    labels_total_power,
+                    benchmark_name,
+                    "power_" + alignment_strategy.__name__ + "_" + aggregation_strategy.__name__)
 
-        self.model_rf_performance.fit(
-            feature_vectors_performance,
-            labels_performance
-        )
+                print("[MODEL] Cross-validate power")
+                results = self.cross_validate(power_estimators, feature_vectors_power, labels_total_power)
 
-        perf_estimator = [self.model_ridge_performance, self.model_dt_performance, self.model_rf_performance]
-        self.plot_learning_curve(perf_estimator, feature_vectors_performance, labels_performance, benchmark_name,
-                                 "performance")
-        print("[MODEL] Cross-validate performance")
-        self.cross_validate(perf_estimator, feature_vectors_performance, labels_performance)
+                for result in results:
+                    result["alignment"] = alignment_strategy.__name__
+                    result["aggregation"] = aggregation_strategy.__name__
 
-        print("[MODEL] Train power models")
-        print("[MODEL] Power examples: " + str(len(labels_total_power)))
+                power_cross_val_results.extend(results)
 
-        self.model_ridge_power.fit(
-            feature_vectors_power,
-            labels_total_power
-        )
+                self.plot_infl_model(self.model_ridge_performance, feature_names, benchmark_name,
+                                     "performance_" + alignment_strategy.__name__ + "_" + aggregation_strategy.__name__)
 
-        self.model_dt_power.fit(
-            feature_vectors_power,
-            labels_total_power
-        )
+                self.plot_infl_model(self.model_ridge_power, feature_names, benchmark_name,
+                                     "power_" + alignment_strategy.__name__ + "_" + aggregation_strategy.__name__)
 
-        self.model_rf_power.fit(
-            feature_vectors_power,
-            labels_total_power
-        )
+        for result in power_cross_val_results:
+            if result["estimator"] == "DecisionTreeRegressor":
+                result["estimator"] = "DT"
+            elif result["estimator"] == "RandomForestRegressor":
+                result["estimator"] = "RF"
 
-        power_estimators = [self.model_ridge_power, self.model_dt_power, self.model_rf_power]
-        self.plot_learning_curve(power_estimators, feature_vectors_power, labels_total_power, benchmark_name, "power")
-        print("[MODEL] Cross-validate power")
-        self.cross_validate(power_estimators, feature_vectors_power, labels_total_power)
+        result_dataframe = pd.DataFrame(power_cross_val_results)
+        sns.set(style="whitegrid")
 
-        perf_infl_model = {}
-        print()
-        print("PERFORMANCE INFLUENCE MODEL")
-        print("---------------------------")
-        for feature, coef in zip(feature_names, self.model_ridge_performance.coef_):
-            print(feature + ": " + str(coef))
-            perf_infl_model[feature] = coef
-        print("---------------------------")
-        print()
+        plotgrid = sns.FacetGrid(result_dataframe, col="alignment", row="aggregation", margin_titles=True)
+        plotgrid.map(sns.barplot, "estimator", "mean_absolute_percentage_error", color="#8bc34a")
+        plotgrid.set_axis_labels("Estimator", "Test MAPE [%]")
+        plotgrid.add_legend()
 
-        with open(path.join(path_handler.model_root, benchmark_name + "_perf_infl_model.json"), "w+") as out_file:
-            json.dump(perf_infl_model, out_file, indent=4)
+        self.plotted_figures += 1
+        plt.tight_layout()
 
-        self.plot_infl_model(perf_infl_model, benchmark_name, "performance")
+        plt.savefig(path.join(path_handler.plot_root, benchmark_name + "_cross_validation.png"),
+                    transparent=True, dpi=200)
 
-        power_infl_model = {}
-        print()
-        print("POWER INFLUENCE MODEL")
-        print("---------------------------")
-        for feature, coef in zip(feature_names, self.model_ridge_power.coef_):
-            print(feature + ": " + str(coef))
-            power_infl_model[feature] = coef
-        print("---------------------------")
-        print()
-
-        self.plot_infl_model(power_infl_model, benchmark_name, "power")
-
-        with open(path.join(path_handler.model_root, benchmark_name + "_power_infl_model.json"), "w+") as out_file:
-            json.dump(power_infl_model, out_file, indent=4)
 
     def cross_validate(self, estimators, features, labels):
-        scorer = ["neg_mean_absolute_error", "neg_mean_squared_error"]
+        scorer = {
+            "mean_absolute_error": make_scorer(mean_absolute_error),
+            "mean_absolute_percentage_error": make_scorer(mean_absolute_percentage_error),
+            "mean_squared_error": make_scorer(mean_squared_error)}
+
         print()
+
+        results = []
         for estimator in estimators:
             scores = cross_validate(estimator, features, labels, cv=3,
                                     scoring=scorer)
 
-            for metric in scorer:
-                print(estimator.__class__.__name__ + " | train | " + metric + ": " +
-                      str(round(np.mean(scores["train_" + metric]), 4)))
+            result = {"estimator": estimator.__class__.__name__}
 
-                print(estimator.__class__.__name__ + " | test | " + metric + ": " +
+            for metric in scorer.keys():
+                result[metric] = np.mean(scores["test_" + metric])
+
+                print(estimator.__class__.__name__ + " | " + metric + ": " +
                       str(round(np.mean(scores["test_" + metric]), 4)))
 
-                print()
-            # print(metric.__name__ + " of " + estimator.__class__.__name__ + ": " +
-            #       str(round(np.mean(scores["test_score"]), 4)))
+            results.append(result)
+
+            print()
 
         print()
+
+        return results
 
     def plot_learning_curve(self, estimators, features, labels, benchmark_name, key_word):
         plt.figure(self.plotted_figures)
         self.plotted_figures += 1
 
+        print()
+        print("Error < 5% after ...")
         for estimator in estimators:
-            # cv = ShuffleSplit(n_splits=100)
-            cv = 3
-            train_sizes, train_scores, test_scores = learning_curve(estimator, features, labels, cv=cv,
-                                                                    scoring=make_scorer(mean_squared_error))
+            plot_data = []
 
-            # print("Examples: " + str(len(labels)))
+            test_data = copy.deepcopy(features)
+            test_labels = copy.deepcopy(labels)
 
-            train_scores_mean = np.mean(train_scores, axis=1)
-            test_scores_mean = np.mean(test_scores, axis=1)
+            train_data = []
+            train_labels = []
 
-            plt.grid()
-            # plt.plot(ridge_train_sizes, ridge_train_scores_mean, "-", label="Training score")
+            threshold_idx = None
 
-            plt.plot(train_sizes, test_scores_mean, "-", label=estimator.__class__.__name__)
+            for i in range(1, len(features)):
+                data_idx = random.randint(0, len(test_data) - 1)
 
+                train_data.append(test_data[data_idx])
+                train_labels.append(test_labels[data_idx])
+
+                test_data.pop(data_idx)
+                test_labels.pop(data_idx)
+
+                model = estimator.fit(train_data, train_labels)
+
+                predict_labels = model.predict(test_data)
+                error = mean_absolute_percentage_error(test_labels, predict_labels)
+
+                if threshold_idx is None and error < 5:
+                    threshold_idx = i
+
+                plot_data.append(error)
+
+            print(estimator.__class__.__name__ + ": " + str(threshold_idx))
+            plt.plot(range(1, len(features)), plot_data, label=estimator.__class__.__name__)
+
+        plt.hlines(5, 0, len(features), colors="grey", linestyles="dashed", label="5% threshold")
+        plt.grid()
         plt.xlabel("Training examples")
-        plt.ylabel("Mean sqrd error")
+        plt.ylabel("Test MAPE [%]")
         plt.legend()
         plt.savefig(path.join(path_handler.plot_root, benchmark_name + "_" + key_word + "_learning_curve.png"),
                     transparent=True, dpi=200)
-        # plt.show()
 
-    def plot_infl_model(self, model, benchmark_name, key_word):
+        print()
+
+    def plot_infl_model(self, estimator, feature_names, benchmark_name, key_word):
+        model = {}
+        print()
+        print(key_word.upper() + " INFLUENCE MODEL")
+        print("---------------------------")
+        for feature, coef in zip(feature_names, estimator.coef_):
+            print(feature + ": " + str(coef))
+            model[feature] = coef
+        print("---------------------------")
+        print()
+
         plt.figure(self.plotted_figures)
         self.plotted_figures += 1
+
         plt.bar(model.keys(), model.values(), color="#8bc34a")
+
         plt.xlabel("Features")
         plt.xticks(rotation=90)
         plt.ylabel("Influence weight")
+
         plt.tight_layout(h_pad=0.2, w_pad=0.2)
         plt.grid()
         plt.savefig(path.join(path_handler.plot_root, benchmark_name + "_" + key_word + "_influence_model.png"),
                     transparent=True, dpi=200)
-        # plt.show()
+
+        with open(path.join(path_handler.model_root, benchmark_name + "_" + key_word + "_infl_model.json"),
+                  "w+") as out_file:
+            json.dump(model, out_file, indent=4)

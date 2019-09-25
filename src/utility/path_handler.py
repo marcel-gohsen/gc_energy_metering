@@ -1,11 +1,12 @@
-import os.path as path
 import getpass
+import os.path as path
 
 from settings import settings
 
 project_dir = path.abspath(path.join(path.dirname(__file__), "..", ".."))
 resources_root = path.join(project_dir, "resources")
 data_root = path.join(project_dir, "data")
+buffer_root = path.join(data_root, "buffer")
 target_systems_root = path.join(resources_root, "target-systems")
 plot_root = path.join(data_root, "plots")
 model_root = path.join(data_root, "models")

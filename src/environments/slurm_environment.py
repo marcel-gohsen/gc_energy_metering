@@ -1,15 +1,13 @@
+import getpass
 import os
 import os.path as path
-
 import subprocess
 import time
-import getpass
 
-from utility import path_handler
-from error_handling.error_handler import ErrorHandler
 from environments.environment import Environment
+from error_handling.error_handler import ErrorHandler
 from settings import settings
-import re
+from utility import path_handler
 
 
 class SlurmEnvironment(Environment):
@@ -94,21 +92,24 @@ class SlurmEnvironment(Environment):
         self.fetch_and_clean()
 
     def job_is_running(self, job_name):
-        out = self.__exec_cmd__(["squeue", "-h", "--name=" + job_name, "--partition=" + settings.SLURM_PARTITION])
+        out = self.__exec_cmd__(
+            ["squeue", "-h", "--name=" + job_name, "--partition=" + settings.SLURM_PARTITION,
+             "--nodelist=" + settings.SLURM_NODE_CONF["include"], "--states=RUNNING", "--user=" + getpass.getuser()])
         lines = out.split("\n")
 
-        num_jobs = 0
-        for line in lines:
-            args = re.compile("[ ]+").split(line)
+        # num_jobs = 0
+        # for line in lines:
+        #     args = re.compile("[ ]+").split(line)
+        #
+        #     if len(args) == 9:
+        #         if args[5] == "R":
+        #             num_jobs += 1
 
-            if len(args) == 9:
-                if args[5] == "R":
-                    num_jobs += 1
-
-        return num_jobs != 0
+        return len(lines) - 1 != 0
 
     def job_is_pending(self, job_name):
-        out = self.__exec_cmd__(["squeue", "-h", "--name=" + job_name, "--partition=" + settings.SLURM_PARTITION])
+        out = self.__exec_cmd__(["squeue", "-h", "--name=" + job_name, "--partition=" + settings.SLURM_PARTITION,
+                                 "--states=PENDING", "--user=" + getpass.getuser()])
         lines = out.split("\n")
 
         return len(lines) - 1 != 0
