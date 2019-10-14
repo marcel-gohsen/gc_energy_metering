@@ -3,9 +3,11 @@ import os.path as path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas
+import seaborn as sns
 from scipy.signal import find_peaks
 from scipy.signal import peak_widths
 
+import train.aggregation as aggregation
 from settings import settings
 from utility import path_handler
 
@@ -41,45 +43,55 @@ class Plotter:
         #
         # conditions = " OR ".join(["run={}"] * len(sched_ids)).format(*sched_ids)
 
-    def plot_energy_performance_tradeoff(self, sched_ids, plot_id):
+    def plot_energy_performance_tradeoff(self, sched_ids, plot_id, metric="energy"):
         plt.figure(plot_id)
-        results = \
-            self.db.execute("SELECT completion_time, power FROM run_eval where run in (" + (
-                ",".join(str(x) for x in sched_ids)) + ") and power is not null;")
 
-        completion_times = []
-        power = []
+        results = self.db.execute("SELECT s.id, e.completion_time, m.power_total_active, m.power_total_apparent," +
+                                  " m.timestamp, s.work_begin_time, s.work_end_time" +
+                                  " FROM run_schedule as s" +
+                                  " JOIN run_eval AS e ON e.run = s.id"
+                                  " JOIN measurements AS m ON m.run = s.id" +
+                                  " WHERE s.id IN (" + (",".join(str(x) for x in sched_ids)) + ");")
 
-        for row in results:
-            if row[1] > 0:
-                completion_times.append(row[0].total_seconds())
-                power.append(row[1])
+        results = pandas.DataFrame.from_records(results,
+                                                columns=["id", "completion_time", "active_power", "apparent_power",
+                                                         "timestamp", "work_begin", "work_end"])
 
-        fit = np.polyfit(completion_times, power, 1)
-        fit_fn = np.poly1d(fit)
+        plot_data = []
+        for group in results.groupby("id"):
+            rep_measurements = group[1]
+            rep_measurements = rep_measurements[rep_measurements["timestamp"] >= rep_measurements.iloc[0]["work_begin"]]
+            rep_measurements = rep_measurements[rep_measurements["timestamp"] <= rep_measurements.iloc[0]["work_end"]]
 
-        r = np.corrcoef(completion_times, power)[0, 1]
+            plot_data.append({"id": rep_measurements.iloc[0]["id"],
+                              "completion_time": rep_measurements.iloc[0]["completion_time"].total_seconds(),
+                              "energy": aggregation.energy_integration(rep_measurements),
+                              "power": aggregation.mean(rep_measurements)})
+
+        plot_data = pandas.DataFrame(plot_data)
+
+        sns.regplot("completion_time", metric, data=plot_data,
+                    scatter_kws={"color": "#8bc34a", "alpha": 0.3, "s": 10.0}, line_kws={"color": "k"},
+                    marker="o", scatter=True)
+
+        plt.xlabel("Completion time [s]")
+        if metric == "energy":
+            plt.ylabel("Energy [Wh]")
+        elif metric == "power":
+            plt.ylabel("Mean power [W]")
+
+        plt.grid()
+        plt.savefig(
+                path.join(path_handler.plot_root, settings.BENCHMARK["name"] + "_performance-" + metric + "-tradeoff.png"),
+                dpi=200,
+                transparent=True)
+
         print()
         print("PEARSON CORRELATION COEFFICIENT")
         print("----------------------------")
-        print(np.corrcoef(completion_times, power))
+        print(np.corrcoef(plot_data["completion_time"], plot_data[metric]))
         print("----------------------------")
         print()
-
-        plt.plot(completion_times, power, "o", color="#8bc34a")
-        plt.plot(completion_times, fit_fn(completion_times), "-", linewidth=2, alpha=0.7, color="black",
-                 label="Linear regression")
-        plt.xlabel("Completion time [s]")
-        plt.ylabel("Mean power [mW]")
-        # plt.xlim(0)
-        # plt.ylim(0)
-        plt.grid()
-        plt.legend()
-        plt.savefig(
-            path.join(path_handler.plot_root, settings.BENCHMARK["name"] + "_performance-power-tradeoff.png"),
-            dpi=200,
-            transparent=True)
-        # plt.show()
 
     def plot_performance_by_host(self, sched_ids, plot_id):
         plt.figure(plot_id)
@@ -150,8 +162,6 @@ class Plotter:
         plt.axvline(df["work_begin_time"][0] + offset, color="k")
         plt.axvline(df["work_end_time"][0] + offset, color="k")
 
-
-
         plt.xlabel("Time")
         plt.ylabel("Power [W]")
         plt.ylim((0, 70))
@@ -164,3 +174,42 @@ class Plotter:
             transparent=True
         )
         # plt.show()
+
+    def plot_config_variance(self, sched_ids):
+        measurements = self.db.execute(
+            "SELECT s.id, timestamp, power_total_active, power_total_apparent, work_begin_time, work_end_time, spec.sw_conf FROM measurements AS m " +
+            "JOIN run_schedule as s ON s.id = m.run JOIN run_spec as spec ON spec.id = s.run_spec " +
+            "WHERE run IN (" + ", ".join(str(x) for x in sched_ids) + ");"
+        )
+
+        measurements = pandas.DataFrame.from_records(measurements,
+                                                     columns=["id", "timestamp", "active_power", "apparent_power",
+                                                              "work_begin", "work_end", "conf_id"])
+
+        configs = []
+        for group in measurements.groupby("id"):
+            rep_measurements = group[1]
+            rep_measurements = rep_measurements[rep_measurements["timestamp"] >= rep_measurements.iloc[0]["work_begin"]]
+            rep_measurements = rep_measurements[rep_measurements["timestamp"] <= rep_measurements.iloc[0]["work_end"]]
+
+            configs.append({"config": rep_measurements.iloc[0]["conf_id"],
+                            "mean_power": rep_measurements["active_power"].mean()})
+
+        plot_data = pandas.DataFrame(configs)
+        plot_data = plot_data.sort_values(by=["mean_power"])
+        plot_data["config"] = plot_data["config"].astype(str)
+        # print(plot_data)
+
+        fig = plt.figure()
+        ax = fig.subplots()
+        sns.lineplot(x="config", y="mean_power", data=plot_data, ax=ax, sort=False, color="#8bc34a")
+        ax.set_xticklabels([])
+
+        plt.xlabel("Config")
+        plt.ylabel("Mean power [W]")
+        plt.savefig(
+            path.join(path_handler.plot_root,
+                      settings.BENCHMARK["name"] + "_power_config_variance.png"),
+            dpi=200,
+            transparent=True
+        )

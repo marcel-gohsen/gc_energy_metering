@@ -51,7 +51,7 @@ class ModelTrainer:
         os.makedirs(path_handler.model_root, exist_ok=True)
 
     def filter_measurements(self, measurements, mapping_func):
-        offset = mapping_func(measurements)
+        offset = mapping_func(measurements, "active_power")
 
         work_begin = measurements.iloc[0]["work_begin_time"]
         work_end = measurements.iloc[0]["work_end_time"]
@@ -66,6 +66,8 @@ class ModelTrainer:
         return filtered
 
     def collect_measurements(self, sched_ids, alignment_strategy, aggregation_strategy):
+        metric = "active_power"
+
         measurements = self.db.execute(
             "SELECT s.id, timestamp, power_total_active, power_total_apparent, work_begin_time, work_end_time, peak_time FROM measurements AS m " +
             "JOIN run_schedule as s ON s.id = m.run WHERE run IN (" + ", ".join(str(x) for x in sched_ids) + ");"
@@ -78,7 +80,7 @@ class ModelTrainer:
         power_per_run = {}
         for run in df.groupby("id"):
             filtered_measurements = self.filter_measurements(run[1], alignment_strategy)
-            power_per_run[run[1].iloc[0]["id"]] = aggregation_strategy(filtered_measurements)
+            power_per_run[run[1].iloc[0]["id"]] = aggregation_strategy(filtered_measurements, metric)
 
         return power_per_run
 
@@ -169,7 +171,9 @@ class ModelTrainer:
                 self.plot_infl_model(self.model_ridge_performance, feature_names, benchmark_name,
                                      "performance_" + alignment_strategy.__name__ + "_" + aggregation_strategy.__name__)
 
-                self.plot_infl_model(self.model_ridge_power, feature_names, benchmark_name,
+                model = self.model_ridge_power.fit(feature_vectors_power, labels_total_power)
+
+                self.plot_infl_model(model, feature_names, benchmark_name,
                                      "power_" + alignment_strategy.__name__ + "_" + aggregation_strategy.__name__)
 
         for result in power_cross_val_results:
@@ -181,17 +185,19 @@ class ModelTrainer:
         result_dataframe = pd.DataFrame(power_cross_val_results)
         sns.set(style="whitegrid")
 
-        plotgrid = sns.FacetGrid(result_dataframe, col="alignment", row="aggregation", margin_titles=True)
-        plotgrid.map(sns.barplot, "estimator", "mean_absolute_percentage_error", color="#8bc34a")
+        plotgrid = sns.factorplot(data=result_dataframe,
+                                  x="estimator", y="mean_absolute_percentage_error",
+                                  col="alignment", hue="aggregation", margin_titles=True, kind="bar", legend=False)
+
         plotgrid.set_axis_labels("Estimator", "Test MAPE [%]")
-        plotgrid.add_legend()
 
         self.plotted_figures += 1
+        plt.legend(loc="upper right")
+        plt.ylim(0, 10)
         plt.tight_layout()
 
         plt.savefig(path.join(path_handler.plot_root, benchmark_name + "_cross_validation.png"),
                     transparent=True, dpi=200)
-
 
     def cross_validate(self, estimators, features, labels):
         scorer = {
@@ -229,42 +235,48 @@ class ModelTrainer:
         print()
         print("Error < 5% after ...")
         for estimator in estimators:
-            plot_data = []
+            thresholds = []
 
-            test_data = copy.deepcopy(features)
-            test_labels = copy.deepcopy(labels)
+            for _ in range(10):
+                plot_data = []
 
-            train_data = []
-            train_labels = []
+                test_data = copy.deepcopy(features)
+                test_labels = copy.deepcopy(labels)
 
-            threshold_idx = None
+                train_data = []
+                train_labels = []
 
-            for i in range(1, len(features)):
-                data_idx = random.randint(0, len(test_data) - 1)
+                threshold_idx = None
 
-                train_data.append(test_data[data_idx])
-                train_labels.append(test_labels[data_idx])
+                for i in range(1, len(features)):
+                    data_idx = random.randint(0, len(test_data) - 1)
 
-                test_data.pop(data_idx)
-                test_labels.pop(data_idx)
+                    train_data.append(test_data[data_idx])
+                    train_labels.append(test_labels[data_idx])
 
-                model = estimator.fit(train_data, train_labels)
+                    test_data.pop(data_idx)
+                    test_labels.pop(data_idx)
 
-                predict_labels = model.predict(test_data)
-                error = mean_absolute_percentage_error(test_labels, predict_labels)
+                    model = estimator.fit(train_data, train_labels)
 
-                if threshold_idx is None and error < 5:
-                    threshold_idx = i
+                    predict_labels = model.predict(test_data)
+                    error = mean_absolute_percentage_error(test_labels, predict_labels)
 
-                plot_data.append(error)
+                    if threshold_idx is None and error < 5:
+                        threshold_idx = i
 
-            print(estimator.__class__.__name__ + ": " + str(threshold_idx))
-            plt.plot(range(1, len(features)), plot_data, label=estimator.__class__.__name__)
+                    # plot_data.append(error)
+
+                if threshold_idx is not None:
+                    thresholds.append(threshold_idx)
+                # plt.plot(range(1, len(features)), plot_data, label=estimator.__class__.__name__)
+            print(estimator.__class__.__name__ + ": " + str(np.mean(thresholds)))
 
         plt.hlines(5, 0, len(features), colors="grey", linestyles="dashed", label="5% threshold")
         plt.grid()
         plt.xlabel("Training examples")
         plt.ylabel("Test MAPE [%]")
+        plt.ylim(0, 30)
         plt.legend()
         plt.savefig(path.join(path_handler.plot_root, benchmark_name + "_" + key_word + "_learning_curve.png"),
                     transparent=True, dpi=200)
@@ -293,6 +305,7 @@ class ModelTrainer:
 
         plt.tight_layout(h_pad=0.2, w_pad=0.2)
         plt.grid()
+        plt.ylim(-3, 3)
         plt.savefig(path.join(path_handler.plot_root, benchmark_name + "_" + key_word + "_influence_model.png"),
                     transparent=True, dpi=200)
 
