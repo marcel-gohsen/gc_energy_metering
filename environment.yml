@@ -80,4 +80,3 @@ dependencies:
     - six==1.12.0
     - tinkerforge==2.1.20
 prefix: /home/kipu5728/Programs/anaconda3/envs/gc_energy_metering
-
